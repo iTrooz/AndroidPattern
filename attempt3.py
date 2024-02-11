@@ -24,6 +24,9 @@ class Point:
     def to_number(self):
         return 7-self.y*3 + self.x
 
+    __hash__ = to_number
+
+
 def getInbetweenPoints(p1: Point, p2: Point):
     xdiff = (p2.x-p1.x)
     if xdiff == 0:
@@ -52,7 +55,7 @@ def genAllPoints():
         for y in range(SIZE):
             yield Point(x, y)
 
-def chooseNextPoint(result: set[int], usedPoints: list[Point]): # generator of ints
+def chooseNextPoint(result: set[int], usedPoints: dict[Point, None]): # generator of ints
     if len(usedPoints) >= MIN_LEN:
         usedPointsStr = "".join(str(p.to_number()) for p in usedPoints)
         result.add(usedPointsStr)
@@ -63,23 +66,23 @@ def chooseNextPoint(result: set[int], usedPoints: list[Point]): # generator of i
 
     # Calculate all possible next used points and their inbetween points
     for p in genAllPoints():
-            
+
         if p not in usedPoints: # if true, we can use this point as the next one
             usedPointsCopy = usedPoints.copy()
 
             # add the point inbetween the last one and the new one. Beware of not adding points already in there
-            for between_p in getInbetweenPoints(usedPointsCopy[-1], p):
+            for between_p in getInbetweenPoints(next(reversed(usedPointsCopy.keys()))  , p):
                 if between_p not in usedPointsCopy:
-                    usedPointsCopy.append(between_p)
+                    usedPointsCopy[between_p] = None
 
-            usedPointsCopy.append(p)
+            usedPointsCopy[p] = None
             chooseNextPoint(result, usedPointsCopy)
 
 
 def main():
     globalResult=set()
     for p in genAllPoints():
-        chooseNextPoint(globalResult, [p])
+        chooseNextPoint(globalResult, {p: None})
 
         print(f"Finished start point {p}")
     print("Sum:", len(globalResult))
