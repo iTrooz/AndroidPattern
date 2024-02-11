@@ -16,48 +16,41 @@ assert is_close_int(-5.00001)
 assert is_close_int(-5.99999)
 assert not is_close_int(5.5)
 
-@dataclass
-class Point:
-    x: int
-    y: int
-
-    def to_number(self):
-        return 7-self.y*3 + self.x
-
-    __hash__ = to_number
+def to_number(p):
+    return 7-p[1]*3 + p[0]
 
 
-def getInbetweenPoints(p1: Point, p2: Point):
-    xdiff = (p2.x-p1.x)
+def getInbetweenPoints(p1: tuple, p2: tuple):
+    xdiff = (p2[0]-p1[0])
     if xdiff == 0:
-        for y in range(min(p1.y, p2.y)+1, max(p1.y, p2.y)):
-            yield Point(p1.x, y)
+        for y in range(min(p1[1], p2[1])+1, max(p1[1], p2[1])):
+            yield (p1[0], y)
         return
     else:
-        slope = (p2.y-p1.y) / (p2.x-p1.x)
+        slope = (p2[1]-p1[1]) / (p2[0]-p1[0])
 
-    init = p2.y - p2.x*slope
+    init = p2[1] - p2[0]*slope
 
-    for x in range(min(p1.x, p2.x)+1, max(p1.x, p2.x)):
+    for x in range(min(p1[0], p2[0])+1, max(p1[0], p2[0])):
         y = slope*x + init
         if is_close_int(y):
-            yield Point(x, round(y))
+            yield (x, round(y))
 
 
-assert list(getInbetweenPoints(Point(0, 0), Point(3, 3))) == [Point(1, 1), Point(2, 2)]
-assert list(getInbetweenPoints(Point(3, 3), Point(0, 0))) == [Point(1, 1), Point(2, 2)]
-assert list(getInbetweenPoints(Point(1, 1), Point(3, 5))) == [Point(2, 3)]
-assert list(getInbetweenPoints(Point(0, 0), Point(0, 2))) == [Point(0, 1)]
-assert list(getInbetweenPoints(Point(0, 0), Point(2, 0))) == [Point(1, 0)]
+assert list(getInbetweenPoints((0, 0), (3, 3))) == [(1, 1), (2, 2)]
+assert list(getInbetweenPoints((3, 3), (0, 0))) == [(1, 1), (2, 2)]
+assert list(getInbetweenPoints((1, 1), (3, 5))) == [(2, 3)]
+assert list(getInbetweenPoints((0, 0), (0, 2))) == [(0, 1)]
+assert list(getInbetweenPoints((0, 0), (2, 0))) == [(1, 0)]
 
 def genAllPoints():
     for x in range(SIZE):
         for y in range(SIZE):
-            yield Point(x, y)
+            yield (x, y)
 
-def chooseNextPoint(result: set[int], usedPoints: dict[Point, None]): # generator of ints
+def chooseNextPoint(result: set[int], usedPoints: dict[tuple, None]): # generator of ints
     if len(usedPoints) >= MIN_LEN:
-        usedPointsStr = "".join(str(p.to_number()) for p in usedPoints)
+        usedPointsStr = "".join(str(to_number(p)) for p in usedPoints)
         result.add(usedPointsStr)
         # add print(usedPointsStr) here is you want to print all possibilities
 
