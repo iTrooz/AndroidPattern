@@ -50,8 +50,9 @@ def genAllPoints():
 
 def chooseNextPoint(result: set[int], usedPoints: dict[tuple, None]): # generator of ints
     if len(usedPoints) >= MIN_LEN:
-        usedPointsStr = "".join(str(to_number(p)) for p in usedPoints)
-        result.add(usedPointsStr)
+        usedPointsMerged = tuple(c for p in usedPoints for c in p)
+        # print(usedPointsMerged)
+        result.add(usedPointsMerged)
         # add print(usedPointsStr) here is you want to print all possibilities
 
         if len(usedPoints) == SIZE*SIZE: # optimisation
