@@ -2,6 +2,8 @@
 
 This project is a fun experiment aiming at determining how many valid pattern combinations exist for the Android lock, while learning how to optimise python programs for performance with large data
 
+These tests were made on an ArchLinux system with kernel 6.7.0 and python 3.11.6
+
 ## Attempt 1
 Naive implementation in Python. Works for size=3 but not for size=5 (way too slow)
 
@@ -10,6 +12,8 @@ time for size=3 -> 8.6s
 ## Attempt 2
 
 I used [flame graphs](https://brendangregg.com/flamegraphs.html) to determine what was taking so long in the program. Using the screenshot below, I found out that `to_number()` was taking way to much time. After optimising it, the program was faster
+
+(To generate flame graphs, I use this command: `python -m cProfile -o out.prof attempt1.py && flameprof --format=log out.prof | flamegraph > attempt1.svg`. You may need to install packages)
 
 Before
 ![](attempt1.svg)
