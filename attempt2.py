@@ -22,18 +22,7 @@ class Point:
     y: int
 
     def to_number(self):
-        match self:
-            case Point(0, 0): return 7
-            case Point(1, 0): return 8
-            case Point(2, 0): return 9
-
-            case Point(0, 1): return 4
-            case Point(1, 1): return 5
-            case Point(2, 1): return 6
-
-            case Point(0, 2): return 1
-            case Point(1, 2): return 2
-            case Point(2, 2): return 3
+        return 7-self.y*3 + self.x
 
 def getInbetweenPoints(p1: Point, p2: Point):
     xdiff = (p2.x-p1.x)
