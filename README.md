@@ -29,3 +29,9 @@ According to the flame graph, the next thing that was taking too much time was `
 The next thing I wanted to optimise was `genAllPoints()`, because it was a really special function, in that it wasn't doing any logic. I remembered that I had performance problems with classes in python in the past, and sure enough, that was it. Removing the Point class (and optimising even more the corresponding value put in the `result` set) made the program run faster (1.6s for size=3)
 
 ![](attempt4.svg)
+
+## Attempt 5
+Really small modification: using itertools instead of manual for-loops for generating points
+Speed is now 1.5s for size=3
+
+![](attempt5.svg)

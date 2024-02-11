@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+import itertools
 
 SIZE=3
 MIN_LEN=4
@@ -59,7 +59,7 @@ def chooseNextPoint(result: set[int], usedPoints: dict[tuple, None]): # generato
             return
 
     # Calculate all possible next used points and their inbetween points
-    for p in genAllPoints():
+    for p in itertools.product(range(SIZE), repeat=2):
 
         if p not in usedPoints: # if true, we can use this point as the next one
             usedPointsCopy = usedPoints.copy()
