@@ -16,8 +16,10 @@ assert is_close_int(-5.00001)
 assert is_close_int(-5.99999)
 assert not is_close_int(5.5)
 
-def to_number(p):
+def to_number_1(p):
     return 7-p[1]*3 + p[0]
+def to_number_0(p):
+    return 6-p[1]*3 + p[0]
 
 
 def getInbetweenPoints(p1: tuple, p2: tuple):
@@ -48,37 +50,39 @@ def genAllPoints():
         for y in range(SIZE):
             yield (x, y)
 
-def chooseNextPoint(result: set[int], usedPoints: dict[tuple, None]): # generator of ints
-    if len(usedPoints) >= MIN_LEN:
-        usedPointsMerged = tuple(c for p in usedPoints for c in p)
-        # print(usedPointsMerged)
-        result.add(usedPointsMerged)
-        # add print(usedPointsStr) here is you want to print all possibilities
+def chooseNextPoint(usedPoints: list[bool], lastPoint: tuple): # generator of ints
+    if sum(usedPoints) >= MIN_LEN:
+        yield 1
 
-        if len(usedPoints) == SIZE*SIZE: # optimisation
+        if sum(usedPoints) == SIZE*SIZE: # optimisation
             return
 
     # Calculate all possible next used points and their inbetween points
     for p in itertools.product(range(SIZE), repeat=2):
+        if not usedPoints[to_number_0(p)]: # if true, we can maybe use this point as a next one
 
-        if p not in usedPoints: # if true, we can use this point as the next one
-            usedPointsCopy = usedPoints.copy()
+            # do not continue with this point if we would it another while tracing the line
+            valid = True
+            for between_p in getInbetweenPoints(lastPoint, p):
+                if usedPoints[to_number_0(between_p)] == False:
+                    valid = False
+                    break
 
-            # add the point inbetween the last one and the new one. Beware of not adding points already in there
-            for between_p in getInbetweenPoints(next(reversed(usedPointsCopy.keys()))  , p):
-                if between_p not in usedPointsCopy:
-                    usedPointsCopy[between_p] = None
-
-            usedPointsCopy[p] = None
-            chooseNextPoint(result, usedPointsCopy)
+            if valid:
+                usedPointsCopy = usedPoints.copy()
+                usedPointsCopy[to_number_0(p)] = True
+                yield sum(chooseNextPoint(usedPointsCopy, p))
 
 
 def main():
-    globalResult=set()
+    total=0
     for p in genAllPoints():
-        chooseNextPoint(globalResult, {p: None})
+        print(f"Starting start point {p} ({to_number_0(p)})")
+        usedPoints = [False for _ in range(SIZE*SIZE)]
+        usedPoints[to_number_0(p)] = True
+        total += sum(chooseNextPoint(usedPoints, p))
 
         print(f"Finished start point {p}")
-    print("Sum:", len(globalResult))
+    print("Sum:", total)
 
 main()
