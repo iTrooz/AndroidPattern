@@ -5,7 +5,7 @@ This project is a fun experiment aiming at determining how many valid pattern co
 These tests were made on an ArchLinux system with kernel 6.7.0 and python 3.11.6
 
 ## Attempt 1
-Naive implementation in Python. Works for size=3 but not for size=5 (way too slow)
+Naive implementation in Python. Works for size=3 but not for size=4 (way too slow)
 
 time for size=3 -> 8.6s
 
