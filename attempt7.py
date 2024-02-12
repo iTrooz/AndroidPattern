@@ -1,10 +1,15 @@
 import itertools
+from numba import njit
+import numba
+
+numba.config.DISABLE_JIT = False
 
 SIZE=3
 MIN_LEN=4
 MAX_LEN=SIZE*SIZE
 # 389112
 
+@njit
 def is_close_int(n):
     """Check f a float is close to an int"""
     n = abs(n%1)
@@ -17,12 +22,14 @@ assert is_close_int(-5.00001)
 assert is_close_int(-5.99999)
 assert not is_close_int(5.5)
 
+@njit
 def to_number_1(p):
     return 7-p[1]*3 + p[0]
+@njit
 def to_number_0(p):
     return 6-p[1]*3 + p[0]
 
-
+@njit
 def getInbetweenPoints(p1: tuple, p2: tuple):
     xdiff = (p2[0]-p1[0])
     if xdiff == 0:
@@ -46,20 +53,24 @@ assert list(getInbetweenPoints((1, 1), (3, 5))) == [(2, 3)]
 assert list(getInbetweenPoints((0, 0), (0, 2))) == [(0, 1)]
 assert list(getInbetweenPoints((0, 0), (2, 0))) == [(1, 0)]
 
+@njit
 def genAllPoints():
+    # if numba JIT is disabled, better use itertools.product(range(SIZE), repeat=2) here
     for x in range(SIZE):
         for y in range(SIZE):
             yield (x, y)
 
+@njit
 def chooseNextPoint(usedPoints: set[tuple], lastPoint: tuple): # generator of ints
+    foundPossibilities = 0
     if len(usedPoints) >= MIN_LEN:
-        yield 1
+        foundPossibilities +=1
 
         if len(usedPoints) == MAX_LEN:
-            return
+            return foundPossibilities
 
     # Calculate all possible next used points and their inbetween points
-    for p in itertools.product(range(SIZE), repeat=2):
+    for p in genAllPoints():
         if p not in usedPoints: # if true, we can maybe use this point as a next one
 
             # do not continue with this point if we would it another while tracing the line
@@ -72,14 +83,16 @@ def chooseNextPoint(usedPoints: set[tuple], lastPoint: tuple): # generator of in
             if valid:
                 usedPointsCopy = usedPoints.copy()
                 usedPointsCopy.add(p)
-                yield sum(chooseNextPoint(usedPointsCopy, p))
+                foundPossibilities += chooseNextPoint(usedPointsCopy, p)
+    
+    return foundPossibilities
 
 
 def main():
     total=0
     for p in genAllPoints():
         print(f"Starting start point {p} ({to_number_0(p)})")
-        total += sum(chooseNextPoint(set([p]), p))
+        total += chooseNextPoint(set([p]), p)
 
         print(f"Finished start point {p}")
     print("Sum:", total)
