@@ -2,6 +2,7 @@ import itertools
 
 SIZE=3
 MIN_LEN=4
+MAX_LEN=SIZE*SIZE
 # 389112
 
 def is_close_int(n):
@@ -54,7 +55,7 @@ def chooseNextPoint(usedPoints: set[tuple], lastPoint: tuple): # generator of in
     if len(usedPoints) >= MIN_LEN:
         yield 1
 
-        if len(usedPoints) == SIZE*SIZE: # optimisation
+        if len(usedPoints) == MAX_LEN:
             return
 
     # Calculate all possible next used points and their inbetween points
