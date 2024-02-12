@@ -35,3 +35,12 @@ Really small modification: using itertools instead of manual for-loops for gener
 Speed is now 1.5s for size=3
 
 ![](attempt5.svg)
+
+
+## Attempt 6
+Use a dict as a hash list with insertion order felt unclean, and the only reason we needed to keep insertion order was to be able to insert all possible patterns in a set for deduplication. I handled the deduplication directly in the logic by disallowing going to points which would require new intermediate points to be marked as visited, so no need for keeping insertion order anymore.
+
+Speed is now 0.65s for size=3
+Note: at some point I also tried my own hash structure: a list of size SIZE*SIZE, with visited point indexes set to True. With this, speed was of 0.8s for size=3
+
+![](attempt6.svg)
