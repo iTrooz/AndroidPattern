@@ -50,27 +50,27 @@ def genAllPoints():
         for y in range(SIZE):
             yield (x, y)
 
-def chooseNextPoint(usedPoints: list[bool], lastPoint: tuple): # generator of ints
-    if sum(usedPoints) >= MIN_LEN:
+def chooseNextPoint(usedPoints: set[tuple], lastPoint: tuple): # generator of ints
+    if len(usedPoints) >= MIN_LEN:
         yield 1
 
-        if sum(usedPoints) == SIZE*SIZE: # optimisation
+        if len(usedPoints) == SIZE*SIZE: # optimisation
             return
 
     # Calculate all possible next used points and their inbetween points
     for p in itertools.product(range(SIZE), repeat=2):
-        if not usedPoints[to_number_0(p)]: # if true, we can maybe use this point as a next one
+        if p not in usedPoints: # if true, we can maybe use this point as a next one
 
             # do not continue with this point if we would it another while tracing the line
             valid = True
             for between_p in getInbetweenPoints(lastPoint, p):
-                if usedPoints[to_number_0(between_p)] == False:
+                if between_p not in usedPoints:
                     valid = False
                     break
 
             if valid:
                 usedPointsCopy = usedPoints.copy()
-                usedPointsCopy[to_number_0(p)] = True
+                usedPointsCopy.add(p)
                 yield sum(chooseNextPoint(usedPointsCopy, p))
 
 
@@ -78,9 +78,7 @@ def main():
     total=0
     for p in genAllPoints():
         print(f"Starting start point {p} ({to_number_0(p)})")
-        usedPoints = [False for _ in range(SIZE*SIZE)]
-        usedPoints[to_number_0(p)] = True
-        total += sum(chooseNextPoint(usedPoints, p))
+        total += sum(chooseNextPoint(set([p]), p))
 
         print(f"Finished start point {p}")
     print("Sum:", total)
