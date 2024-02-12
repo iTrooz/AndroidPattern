@@ -1,4 +1,4 @@
-# What is the number of possible combination in the Android pattern ?
+# What is the number of possible combinations in the Android pattern ?
 
 This project is a fun experiment aiming at determining how many valid pattern combinations exist for the Android lock, while learning how to optimise python programs for performance with large data
 
