@@ -67,3 +67,8 @@ Go, speed was 4.5s
 
 C++ with g++ and -O3, speed was 2.2s
 ![](attempt7/cpp/attempt7.svg)
+Note:
+g++ (classic): 17.6s,
+g++ (-O3): 2.2s,
+clang++ (classic): 15.7s,
+clang++ (-O3): 2.3s
