@@ -1,6 +1,6 @@
-const SIZE: isize = 3;
+const SIZE: isize = 4;
 const MIN_LEN: usize = 4;
-const MAX_LEN: usize = (SIZE * SIZE) as usize;
+const MAX_LEN: usize = 7;
 
 fn is_close_int(n: f64) -> bool {
     let n = n.abs() % 1.0;

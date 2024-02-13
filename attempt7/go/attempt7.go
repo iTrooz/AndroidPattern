@@ -5,9 +5,9 @@ import (
 	"math"
 )
 
-const SIZE = 3
+const SIZE = 4
 const MIN_LEN = 4
-const MAX_LEN = SIZE * SIZE
+const MAX_LEN = 7
 
 func isCloseInt(n float64) bool {
 	n = math.Mod(math.Abs(n), 1.0)

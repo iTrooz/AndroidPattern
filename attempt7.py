@@ -4,9 +4,9 @@ import numba
 
 numba.config.DISABLE_JIT = False
 
-SIZE=3
+SIZE=4
 MIN_LEN=4
-MAX_LEN=SIZE*SIZE
+MAX_LEN=7
 # 389112
 
 @njit
