@@ -1,8 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"log"
 	"math"
+	"os"
+	"runtime/pprof"
 )
 
 const SIZE = 4
@@ -97,6 +101,18 @@ func chooseNextPoint(usedPoints *[][2]int, lastPoint [2]int) int {
 }
 
 func main() {
+	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	flag.Parse()
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	var total int
 
 	for _, p := range genAllPoints() {
