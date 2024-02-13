@@ -44,3 +44,26 @@ Speed is now 0.65s for size=3
 Note: at some point I also tried my own hash structure: a list of size SIZE*SIZE, with visited point indexes set to True. With this, speed was of 0.8s for size=3
 
 ![](attempt6.svg)
+
+## Attempt 7
+At this point I wasn't sure what to optimise anything, so I tried porting it in different languages:
+- Rust
+- Go
+- C++
+I also used numba to accelerate the code
+
+All of these results were pretty fast for size=3, so I changed the config: from now on, I will test 4x4, but only for patterns of size <= 7
+
+Results:
+
+Python + numba, speed was 3.5s
+![](attempt7/rust/attempt7.svg)
+
+Rust, speed was 1.5s
+![](attempt7/rust/attempt7.svg)
+
+Go, speed was 4.5s
+![](attempt7/go/attempt7.svg)
+
+C++ with g++ and -O3, speed was 2.2s
+![](attempt7/cpp/attempt7.svg)
