@@ -56,6 +56,9 @@ All of these results were pretty fast for size=3, so I changed the config: from 
 
 Results:
 
+### Normal Python
+speed was 18.4s
+
 ### Python + numba
 speed was 3.5s
 
