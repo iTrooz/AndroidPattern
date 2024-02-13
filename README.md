@@ -56,16 +56,34 @@ All of these results were pretty fast for size=3, so I changed the config: from 
 
 Results:
 
-Python + numba, speed was 3.5s
+### Python + numba
+speed was 3.5s
 ![](attempt7/rust/attempt7.svg)
 
-Rust, speed was 1.5s
+### Rust
+speed was 1.5s
+
+flamegraph generated using `cargo flamegraph`
 ![](attempt7/rust/attempt7.svg)
 
-Go, speed was 4.5s
+### Go
+speed was 4.5s
+
+flamegraph was generated using
+```sh
+go run . --cpuprofile cpu.txt.tmp
+go tool pprof -raw cpu.txt.tmp | stackcollapse-go.pl | flamegraph.pl > attempt7_go.svg
+```
 ![](attempt7/go/attempt7.svg)
 
-C++ with g++ and -O3, speed was 2.2s
+### C++
+g++ and -O3, speed was 2.2s
+
+flamegraph generated using
+```sh
+perf record -F 99 -g -- ./attempt7_cpp
+perf script | stackcollapse-perf.pl | flamegraph.pl > perf.svg
+```
 ![](attempt7/cpp/attempt7.svg)
 Note:
 g++ (classic): 17.6s,
