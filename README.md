@@ -58,7 +58,6 @@ Results:
 
 ### Python + numba
 speed was 3.5s
-![](attempt7/rust/attempt7.svg)
 
 ### Rust
 speed was 1.5s
