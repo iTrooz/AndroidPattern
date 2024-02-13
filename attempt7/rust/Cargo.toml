@@ -10,3 +10,6 @@ edition = "2021"
 [[bin]]
 name = "attempt7"
 path = "attempt7.rs"
+
+[profile.release]
+debug = true
