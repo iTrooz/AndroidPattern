@@ -81,10 +81,10 @@ go tool pprof -raw cpu.txt.tmp | stackcollapse-go.pl | flamegraph.pl > attempt7_
 ### C++
 g++ and -O3, speed was 2.2s
 
-flamegraph generated using
+flamegraph generated with https://github.com/jasonrohrer/wallClockProfiler using
 ```sh
-perf record -F 99 -g -- ./attempt7_cpp
-perf script | stackcollapse-perf.pl | flamegraph.pl > perf.svg
+wallClockProfiler 500 ./attempt7_cpp > out.txt
+stackcollapse-wcp.pl out.txt | flamegraph.pl > attempt7.svg
 ```
 ![](attempt7/cpp/attempt7.svg)
 Note:
