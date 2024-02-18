@@ -65,7 +65,12 @@ speed was 3.5s
 ### Rust
 speed was 1.5s
 
-flamegraph generated using `cargo flamegraph`
+flamegraph generated using
+```sh
+cargo build --release
+wallClockProfiler 500 target/release/attempt7_cpp > out.txt
+stackcollapse-wcp.pl out.txt | flamegraph.pl > attempt7.svg
+```
 ![](attempt7/rust/attempt7.svg)
 
 ### Go
