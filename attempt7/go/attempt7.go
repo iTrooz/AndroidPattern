@@ -91,8 +91,7 @@ func chooseNextPoint(usedPoints [][2]int, lastPoint [2]int) int {
 			}
 
 			if valid {
-				usedPointsCopy := append(usedPoints, p)
-				foundPossibilities += chooseNextPoint(usedPointsCopy, p)
+				foundPossibilities += chooseNextPoint(append(usedPoints, p), p)
 			}
 		}
 	}
