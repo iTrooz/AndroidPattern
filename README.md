@@ -122,6 +122,14 @@ C++: 1.0s
 ## Attempt 9
 In this attempt, I saw that for the Rust script, a big part of the time was spent doing Vec::push(). The only time when this method is called is when adding the new points when doing recursive calls. I had already noticed earlier that I could try to have a stack-based system instead of cloning/pushing, so I did that. That indeed resulted in a performance boost. Unfortunately, I wasn't able to optimise the Go script, because arrays in Go are weird, I'm not even sure if there is something I can optimise there (but probably, seeing the time differences).
 
+The speed gain is probably caused by the fact .clone() allocates just enough space for the current array size, so when you do .push() just after, you are reallocating everything. And indeed using https://users.rust-lang.org/t/best-way-to-clone-and-append-a-single-element/68675 (
+```rs
+let mut b = Vec::with_capacity(a.len() + 1);
+b.clone_from(&a);
+b.push(item);
+```
+) to add one more element to the capacity brings speed to 0.95s. The remaining difference is probably caused by .clone()
+
 Python + numba: 1.7s
 
 Rust: 0.7s
