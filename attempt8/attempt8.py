@@ -61,7 +61,7 @@ def genAllPoints():
             yield (x, y)
 
 @njit
-def chooseNextPoint(usedPoints: set[tuple], lastPoint: tuple): # generator of ints
+def chooseNextPoint(usedPoints: list[tuple], lastPoint: tuple): # generator of ints
     foundPossibilities = 0
     if len(usedPoints) >= MIN_LEN:
         foundPossibilities +=1
@@ -82,7 +82,7 @@ def chooseNextPoint(usedPoints: set[tuple], lastPoint: tuple): # generator of in
 
             if valid:
                 usedPointsCopy = usedPoints.copy()
-                usedPointsCopy.add(p)
+                usedPointsCopy.append(p)
                 foundPossibilities += chooseNextPoint(usedPointsCopy, p)
     
     return foundPossibilities
@@ -92,7 +92,7 @@ def main():
     total=0
     for p in genAllPoints():
         print(f"Starting start point {p} ({to_number_0(p)})")
-        total += chooseNextPoint(set([p]), p)
+        total += chooseNextPoint([p], p)
 
         print(f"Finished start point {p}")
     print("Sum:", total)
