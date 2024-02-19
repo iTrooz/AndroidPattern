@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 const int SIZE = 4;
 const int MIN_LEN = 4;
