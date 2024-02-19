@@ -118,3 +118,17 @@ Go: 3.8s
 
 C++: 1.0s
 ![](attempt8/cpp/attempt8.svg)
+
+## Attempt 9
+In this attempt, I saw that for the Rust script, a big part of the time was spent doing Vec::push(). The only time when this method is called is when adding the new points when doing recursive calls. I had already noticed earlier that I could try to have a stack-based system instead of cloning/pushing, so I did that. That indeed resulted in a performance boost. Unfortunately, I wasn't able to optimise the Go script, because arrays in Go are weird, I'm not even sure if there is something I can optimise there (but probably, seeing the time differences).
+
+Python + numba: 1.7s
+
+Rust: 0.7s
+![](attempt9/rust/attempt9.svg)
+
+Go: 3.7s
+![](attempt9/go/attempt9.svg)
+
+C++: 0.69s
+![](attempt9/cpp/attempt9.svg)
