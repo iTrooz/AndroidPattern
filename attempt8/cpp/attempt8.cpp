@@ -1,7 +1,6 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <set>
 
 const int SIZE = 4;
 const int MIN_LEN = 4;
@@ -55,7 +54,7 @@ std::vector<std::pair<int, int>> gen_all_points() {
     return result;
 }
 
-int choose_next_point(std::set<std::pair<int, int>>& used_points, std::pair<int, int> last_point) {
+int choose_next_point(std::vector<std::pair<int, int>>& used_points, std::pair<int, int> last_point) {
     int found_possibilities = 0;
 
     if (used_points.size() >= MIN_LEN) {
@@ -66,17 +65,17 @@ int choose_next_point(std::set<std::pair<int, int>>& used_points, std::pair<int,
     }
 
     for (const auto& p : gen_all_points()) {
-        if(!used_points.contains(p)) {
+        if(std::find(used_points.begin(), used_points.end(), p) == used_points.end()) {
             bool valid = true;
             for (const auto& between_p : get_inbetween_points(last_point, p)) {
-                if(!used_points.contains(between_p)) {
+                if(std::find(used_points.begin(), used_points.end(), between_p) == used_points.end()) {
                     valid = false;
                     break;
                 }
             }
             if (valid) {
-                std::set<std::pair<int, int>> used_points_copy = used_points;
-                used_points_copy.insert(p);
+                std::vector<std::pair<int, int>> used_points_copy = used_points;
+                used_points_copy.push_back(p);
                 found_possibilities += choose_next_point(used_points_copy, p);
             }
         }
@@ -91,7 +90,7 @@ int main() {
     for (const auto& p : gen_all_points()) {
         auto a = to_number_0(p);
         std::cout << "Starting start point (" << p.first << ", " << p.second << ") (" << a << ")" << std::endl;
-        std::set<std::pair<int, int>> used_points = {p};
+        std::vector<std::pair<int, int>> used_points = {p};
         total += choose_next_point(used_points, p);
         std::cout << "Finished start point (" << p.first << ", " << p.second << ")" << std::endl;
     }
