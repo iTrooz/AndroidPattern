@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 SIZE=3
 MIN_LEN=4
+MAX_SIZE=SIZE*SIZE
 # 389112
 
 def is_close_int(n):
@@ -69,7 +70,7 @@ def chooseNextPoint(result: set[int], usedPoints: list[Point]): # generator of i
         result.add(usedPointsStr)
         # add print(usedPointsStr) here is you want to print all possibilities
 
-        if len(usedPoints) == SIZE*SIZE: # optimisation
+        if len(usedPoints) == MAX_SIZE:
             return
 
     # Calculate all possible next used points and their inbetween points
