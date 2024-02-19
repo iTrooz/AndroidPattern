@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"maps"
 	"math"
 	"os"
 	"runtime/pprof"
@@ -70,32 +69,30 @@ func genAllPoints() [][2]int {
 	return result
 }
 
-func chooseNextPoint(usedPoints map[[2]int]bool, lastPoint [2]int) int {
+func chooseNextPoint(usedPoints *[][2]int, lastPoint [2]int) int {
 	var foundPossibilities int
 
-	if len(usedPoints) >= MIN_LEN {
+	if len(*usedPoints) >= MIN_LEN {
 		foundPossibilities++
-		if len(usedPoints) == MAX_LEN {
+		if len(*usedPoints) == MAX_LEN {
 			return foundPossibilities
 		}
 	}
 
 	for _, p := range genAllPoints() {
-		if _, ok := usedPoints[p]; !ok {
+		if !containsPoint(*usedPoints, p) {
 
 			valid := true
 			for _, betweenP := range getInbetweenPoints(lastPoint, p) {
-				if _, ok := usedPoints[betweenP]; !ok {
+				if !containsPoint(*usedPoints, betweenP) {
 					valid = false
 					break
 				}
 			}
 
 			if valid {
-				usedPointsCopy := maps.Clone(usedPoints)
-				usedPointsCopy[p] = true
-
-				foundPossibilities += chooseNextPoint(usedPointsCopy, p)
+				usedPointsCopy := append(*usedPoints, p)
+				foundPossibilities += chooseNextPoint(&usedPointsCopy, p)
 			}
 		}
 	}
@@ -120,11 +117,20 @@ func main() {
 
 	for _, p := range genAllPoints() {
 		fmt.Printf("Starting start point %v (id=%v)\n", p, toNumber0(p))
-		usedPoints := map[[2]int]bool{p: true}
-		out := chooseNextPoint(usedPoints, p)
+		usedPoints := [][2]int{p}
+		out := chooseNextPoint(&usedPoints, p)
 		total += out
 		fmt.Printf("Finished start point %v (possibilities=%v)\n", p, out)
 	}
 
 	fmt.Printf("Sum: %d\n", total)
+}
+
+func containsPoint(points [][2]int, point [2]int) bool {
+	for _, p := range points {
+		if p == point {
+			return true
+		}
+	}
+	return false
 }
