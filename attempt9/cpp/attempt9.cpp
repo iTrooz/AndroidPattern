@@ -60,7 +60,7 @@ int choose_next_point(std::vector<std::pair<int, int>>& used_points, std::pair<i
 
     if (used_points.size() >= MIN_LEN) {
         found_possibilities += 1;
-        if (used_points.size() == MAX_LEN) {
+        if (used_points.size() >= MAX_LEN) {
             return found_possibilities;
         }
     }

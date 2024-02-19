@@ -66,7 +66,7 @@ def chooseNextPoint(usedPoints: list[tuple], lastPoint: tuple): # generator of i
     if len(usedPoints) >= MIN_LEN:
         foundPossibilities +=1
 
-        if len(usedPoints) == MAX_LEN:
+        if len(usedPoints) >= MAX_LEN:
             return foundPossibilities
 
     # Calculate all possible next used points and their inbetween points

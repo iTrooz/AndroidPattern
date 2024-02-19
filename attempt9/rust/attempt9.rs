@@ -66,7 +66,7 @@ fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, 
 
     if used_points.len() >= MIN_LEN {
         found_possibilities += 1;
-        if used_points.len() == MAX_LEN {
+        if used_points.len() >= MAX_LEN {
             return found_possibilities;
         }
     }

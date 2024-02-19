@@ -74,7 +74,7 @@ func chooseNextPoint(usedPoints [][2]int, lastPoint [2]int) int {
 
 	if len(usedPoints) >= MIN_LEN {
 		foundPossibilities++
-		if len(usedPoints) == MAX_LEN {
+		if len(usedPoints) >= MAX_LEN {
 			return foundPossibilities
 		}
 	}
