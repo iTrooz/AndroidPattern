@@ -91,6 +91,7 @@ def chooseNextPoint(result: set[int], usedPoints: list[Point]): # generator of i
 def main():
     globalResult=set()
     for p in genAllPoints():
+        print(f"Starting start point {p}")
         chooseNextPoint(globalResult, [p])
 
         print(f"Finished start point {p}")
