@@ -68,7 +68,7 @@ speed was 18.4s
 speed was 3.5s
 
 ### Rust
-speed was 1.5s
+speed was 1.8s
 
 flamegraph generated using
 ```sh
@@ -79,12 +79,12 @@ stackcollapse-wcp.pl out.txt | flamegraph.pl > attempt7.svg
 ![](attempt7/rust/attempt7.svg)
 
 ### Go
-speed was 4.5s
+speed was 7.8s
 
 flamegraph was generated using
 ```sh
 go run . --cpuprofile cpu.txt.tmp
-go tool pprof -raw cpu.txt.tmp | stackcollapse-go.pl | flamegraph.pl > attempt7_go.svg
+go tool pprof -raw cpu.txt.tmp | stackcollapse-go.pl | flamegraph.pl > attempt7.svg
 ```
 ![](attempt7/go/attempt7.svg)
 
@@ -98,7 +98,7 @@ stackcollapse-wcp.pl out.txt | flamegraph.pl > attempt7.svg
 ```
 ![](attempt7/cpp/attempt7.svg)
 Note:
-g++ (classic): 17.6s,
+g++ (classic): 17.2s,
 g++ (-O3): 2.2s,
-clang++ (classic): 15.7s,
+clang++ (classic): 15.6s,
 clang++ (-O3): 2.3s
