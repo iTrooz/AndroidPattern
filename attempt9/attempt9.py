@@ -81,9 +81,9 @@ def chooseNextPoint(usedPoints: list[tuple], lastPoint: tuple): # generator of i
                     break
 
             if valid:
-                usedPointsCopy = usedPoints.copy()
-                usedPointsCopy.append(p)
-                foundPossibilities += chooseNextPoint(usedPointsCopy, p)
+                usedPoints.append(p)
+                foundPossibilities += chooseNextPoint(usedPoints, p)
+                usedPoints.pop()
     
     return foundPossibilities
 
