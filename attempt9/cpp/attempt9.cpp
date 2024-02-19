@@ -74,9 +74,9 @@ int choose_next_point(std::vector<std::pair<int, int>>& used_points, std::pair<i
                 }
             }
             if (valid) {
-                std::vector<std::pair<int, int>> used_points_copy = used_points;
-                used_points_copy.push_back(p);
-                found_possibilities += choose_next_point(used_points_copy, p);
+                used_points.push_back(p);
+                found_possibilities += choose_next_point(used_points, p);
+                used_points.pop_back();
             }
         }
     }

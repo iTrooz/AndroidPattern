@@ -83,10 +83,9 @@ fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, 
             }
 
             if valid {
-                // TODO maybe use stack push/pop instead of copy ??
-                let mut used_points_copy = used_points.clone();
-                used_points_copy.push(p);
-                found_possibilities += choose_next_point(&mut used_points_copy, p);
+                used_points.push(p);
+                found_possibilities += choose_next_point(used_points, p);
+                used_points.pop();
             }
         }
     }
