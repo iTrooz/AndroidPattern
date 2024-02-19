@@ -4,6 +4,11 @@ This project is a fun experiment aiming at determining how many valid pattern co
 
 These tests were made on an ArchLinux system with kernel 6.7.0 and python 3.11.6
 
+Attempts guidelines:
+- Each attempt is about one (or more) specific optimisation(s)
+- Each attempt modifies the scripts in all languages in the same way
+- I can modify earlier attempts to fix small errors/opportunistic optimisations if needed. If the resulted time is improved by a lot (e.g. beats the time of the next attempt) it should probably go into a new attempt at the end
+
 ## Attempt 1
 Naive implementation in Python. Works for size=3 but not for size=4 (way too slow)
 
