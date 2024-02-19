@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 const SIZE: isize = 4;
 const MIN_LEN: usize = 4;
 const MAX_LEN: usize = 7;
@@ -61,7 +63,7 @@ fn gen_all_points() -> Vec<(isize, isize)> {
         .collect()
 }
 
-fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, isize)) -> isize {
+fn choose_next_point(used_points: &mut HashSet<(isize, isize)>, last_point: (isize, isize)) -> isize {
     let mut found_possibilities = 0;
 
     if used_points.len() >= MIN_LEN {
@@ -85,7 +87,7 @@ fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, 
             if valid {
                 // TODO maybe use stack push/pop instead of copy ??
                 let mut used_points_copy = used_points.clone();
-                used_points_copy.push(p);
+                used_points_copy.insert(p);
                 found_possibilities += choose_next_point(&mut used_points_copy, p);
             }
         }
@@ -99,7 +101,7 @@ fn main() {
 
     for p in gen_all_points() {
         println!("Starting start point {:?} ({})", p, to_number_0(&p));
-        let mut used_points = vec![p];
+        let mut used_points = HashSet::from([p]);
         total += choose_next_point(&mut used_points, p);
         println!("Finished start point {:?}", p);
     }
