@@ -1,0 +1,1453 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="390" onload="init(evt)" viewBox="0 0 1200 390" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:17px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 12 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="390.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="details" x="10.00" y="373" > </text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="373" > </text>
+<g id="frames">
+<g >
+<title>operator new   (8 samples, 0.76%)</title><rect x="1138.6" y="117" width="9.0" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1141.65" y="127.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::~vector   (18 samples, 1.70%)</title><rect x="1148.7" y="229" width="20.1" height="15.0" fill="rgb(243,175,42)" rx="2" ry="2" />
+<text  x="1151.69" y="239.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::size   (1 samples, 0.09%)</title><rect x="108.2" y="197" width="1.2" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="111.24" y="207.5" ></text>
+</g>
+<g >
+<title>operator delete   (3 samples, 0.28%)</title><rect x="1133.1" y="117" width="3.3" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1136.07" y="127.5" ></text>
+</g>
+<g >
+<title>std::find&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt; &gt;   (4 samples, 0.38%)</title><rect x="1178.8" y="245" width="4.5" height="15.0" fill="rgb(232,124,29)" rx="2" ry="2" />
+<text  x="1181.84" y="255.5" ></text>
+</g>
+<g >
+<title>std::construct_at&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt; &gt;   (2 samples, 0.19%)</title><rect x="1136.4" y="117" width="2.2" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="1139.41" y="127.5" ></text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (1 samples, 0.09%)</title><rect x="1188.9" y="261" width="1.1" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="1191.88" y="271.5" ></text>
+</g>
+<g >
+<title>free   (15 samples, 1.42%)</title><rect x="1152.0" y="101" width="16.8" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1155.04" y="111.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (13 samples, 1.23%)</title><rect x="1041.5" y="213" width="14.5" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="1044.52" y="223.5" ></text>
+</g>
+<g >
+<title>roundf64   (1 samples, 0.09%)</title><rect x="1175.5" y="229" width="1.1" height="15.0" fill="rgb(240,163,39)" rx="2" ry="2" />
+<text  x="1178.49" y="239.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (3 samples, 0.28%)</title><rect x="1133.1" y="165" width="3.3" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="1136.07" y="175.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (83 samples, 7.85%)</title><rect x="947.7" y="165" width="92.7" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="950.75" y="175.5" >std::alloca..</text>
+</g>
+<g >
+<title>malloc   (8 samples, 0.76%)</title><rect x="1138.6" y="101" width="9.0" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1141.65" y="111.5" ></text>
+</g>
+<g >
+<title>choose_next_point   (1,057 samples, 100.00%)</title><rect x="10.0" y="293" width="1180.0" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="13.00" y="303.5" >choose_next_point  </text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (48 samples, 4.54%)</title><rect x="787.0" y="133" width="53.6" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="789.99" y="143.5" >std::..</text>
+</g>
+<g >
+<title>operator new   (45 samples, 4.26%)</title><rect x="734.5" y="117" width="50.3" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="737.52" y="127.5" >opera..</text>
+</g>
+<g >
+<title>is_close_int   (105 samples, 9.93%)</title><rect x="408.5" y="197" width="117.3" height="15.0" fill="rgb(213,40,9)" rx="2" ry="2" />
+<text  x="411.54" y="207.5" >is_close_int  </text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::construct&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt; &gt;   (17 samples, 1.61%)</title><rect x="848.4" y="117" width="19.0" height="15.0" fill="rgb(223,85,20)" rx="2" ry="2" />
+<text  x="851.39" y="127.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_S_relocate   (2 samples, 0.19%)</title><rect x="1136.4" y="197" width="2.2" height="15.0" fill="rgb(229,111,26)" rx="2" ry="2" />
+<text  x="1139.41" y="207.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (2 samples, 0.19%)</title><rect x="1176.6" y="133" width="2.2" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="1179.60" y="143.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (8 samples, 0.76%)</title><rect x="1138.6" y="165" width="9.0" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="1141.65" y="175.5" ></text>
+</g>
+<g >
+<title>operator new   (8 samples, 0.76%)</title><rect x="1042.6" y="101" width="9.0" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1045.64" y="111.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (2 samples, 0.19%)</title><rect x="1176.6" y="229" width="2.2" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="1179.60" y="239.5" ></text>
+</g>
+<g >
+<title>operator delete   (27 samples, 2.55%)</title><rect x="194.2" y="85" width="30.1" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="197.20" y="95.5" >op..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; const&amp;&gt;   (15 samples, 1.42%)</title><rect x="1121.9" y="213" width="16.7" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="1124.90" y="223.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1183.3" y="197" width="2.2" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="1186.30" y="207.5" ></text>
+</g>
+<g >
+<title>free   (1 samples, 0.09%)</title><rect x="1052.7" y="101" width="1.1" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1055.69" y="111.5" ></text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (1 samples, 0.09%)</title><rect x="1188.9" y="245" width="1.1" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="1191.88" y="255.5" ></text>
+</g>
+<g >
+<title>choose_next_point   (1,056 samples, 99.91%)</title><rect x="10.0" y="277" width="1178.9" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="13.00" y="287.5" >choose_next_point  </text>
+</g>
+<g >
+<title>std::__relocate_a_1&lt;std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt;*, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (2 samples, 0.19%)</title><rect x="1136.4" y="165" width="2.2" height="15.0" fill="rgb(209,21,5)" rx="2" ry="2" />
+<text  x="1139.41" y="175.5" ></text>
+</g>
+<g >
+<title>malloc   (6 samples, 0.57%)</title><rect x="1044.9" y="85" width="6.7" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1047.87" y="95.5" ></text>
+</g>
+<g >
+<title>round@plt   (5 samples, 0.47%)</title><rect x="525.8" y="197" width="5.5" height="15.0" fill="rgb(250,208,49)" rx="2" ry="2" />
+<text  x="528.76" y="207.5" ></text>
+</g>
+<g >
+<title>malloc   (2 samples, 0.19%)</title><rect x="1176.6" y="101" width="2.2" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1179.60" y="111.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (27 samples, 2.55%)</title><rect x="194.2" y="101" width="30.1" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="197.20" y="111.5" >st..</text>
+</g>
+<g >
+<title>operator new   (2 samples, 0.19%)</title><rect x="1176.6" y="117" width="2.2" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1179.60" y="127.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::~vector   (87 samples, 8.23%)</title><rect x="943.3" y="213" width="97.1" height="15.0" fill="rgb(243,175,42)" rx="2" ry="2" />
+<text  x="946.28" y="223.5" >std::vector..</text>
+</g>
+<g >
+<title>std::__relocate_a&lt;std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt;*, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (4 samples, 0.38%)</title><rect x="225.5" y="133" width="4.4" height="15.0" fill="rgb(239,160,38)" rx="2" ry="2" />
+<text  x="228.46" y="143.5" ></text>
+</g>
+<g >
+<title>get_inbetween_points   (1 samples, 0.09%)</title><rect x="1187.8" y="261" width="1.1" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="1190.77" y="271.5" ></text>
+</g>
+<g >
+<title>??   (12 samples, 1.14%)</title><rect x="1155.4" y="85" width="13.4" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1158.39" y="95.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_check_len   (3 samples, 0.28%)</title><rect x="574.9" y="149" width="3.3" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="577.88" y="159.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_create_storage   (54 samples, 5.11%)</title><rect x="870.7" y="181" width="60.3" height="15.0" fill="rgb(253,221,52)" rx="2" ry="2" />
+<text  x="873.72" y="191.5" >std::_..</text>
+</g>
+<g >
+<title>std::__relocate_a&lt;std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt;*, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (17 samples, 1.61%)</title><rect x="848.4" y="165" width="19.0" height="15.0" fill="rgb(239,160,38)" rx="2" ry="2" />
+<text  x="851.39" y="175.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (3 samples, 0.28%)</title><rect x="1097.3" y="133" width="3.4" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="1100.34" y="143.5" ></text>
+</g>
+<g >
+<title>free   (2 samples, 0.19%)</title><rect x="1183.3" y="117" width="2.2" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1186.30" y="127.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (149 samples, 14.10%)</title><rect x="701.0" y="213" width="166.4" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="704.03" y="223.5" >std::vector&lt;std::pair..</text>
+</g>
+<g >
+<title>free   (3 samples, 0.28%)</title><rect x="1133.1" y="101" width="3.3" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1136.07" y="111.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::emplace_back&lt;std::pair&lt;int, int&gt; &gt;   (37 samples, 3.50%)</title><rect x="536.9" y="181" width="41.3" height="15.0" fill="rgb(211,27,6)" rx="2" ry="2" />
+<text  x="539.93" y="191.5" >std..</text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1052.7" y="133" width="2.2" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="1055.69" y="143.5" ></text>
+</g>
+<g >
+<title>std::construct_at&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt; &gt;   (17 samples, 1.61%)</title><rect x="848.4" y="101" width="19.0" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="851.39" y="111.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (46 samples, 4.35%)</title><rect x="879.6" y="149" width="51.4" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="882.65" y="159.5" >std::..</text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (10 samples, 0.95%)</title><rect x="1041.5" y="117" width="11.2" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="1044.52" y="127.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1183.3" y="181" width="2.2" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="1186.30" y="191.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (3 samples, 0.28%)</title><rect x="1097.3" y="149" width="3.4" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="1100.34" y="159.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_base   (55 samples, 5.20%)</title><rect x="869.6" y="197" width="61.4" height="15.0" fill="rgb(205,3,0)" rx="2" ry="2" />
+<text  x="872.60" y="207.5" >std::_..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::~_Vector_base   (18 samples, 1.70%)</title><rect x="1148.7" y="213" width="20.1" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="1151.69" y="223.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (3 samples, 0.28%)</title><rect x="1133.1" y="197" width="3.3" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="1136.07" y="207.5" ></text>
+</g>
+<g >
+<title>std::__relocate_a_1&lt;std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt;*, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (17 samples, 1.61%)</title><rect x="848.4" y="149" width="19.0" height="15.0" fill="rgb(209,21,5)" rx="2" ry="2" />
+<text  x="851.39" y="159.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::vector   (9 samples, 0.85%)</title><rect x="1138.6" y="229" width="10.1" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="1141.65" y="239.5" ></text>
+</g>
+<g >
+<title>??   (5 samples, 0.47%)</title><rect x="569.3" y="37" width="5.6" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="572.30" y="47.5" ></text>
+</g>
+<g >
+<title>std::operator==&lt;int, int&gt;   (65 samples, 6.15%)</title><rect x="626.2" y="149" width="72.6" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="629.23" y="159.5" >std::ope..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_check_len   (1 samples, 0.09%)</title><rect x="1054.9" y="165" width="1.1" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="1057.92" y="175.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_impl_data::_Vector_impl_data   (11 samples, 1.04%)</title><rect x="578.2" y="149" width="12.3" height="15.0" fill="rgb(252,216,51)" rx="2" ry="2" />
+<text  x="581.23" y="159.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (2 samples, 0.19%)</title><rect x="1176.6" y="149" width="2.2" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="1179.60" y="159.5" ></text>
+</g>
+<g >
+<title>operator delete   (43 samples, 4.07%)</title><rect x="792.6" y="101" width="48.0" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="795.57" y="111.5" >oper..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (56 samples, 5.30%)</title><rect x="724.5" y="181" width="62.5" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="727.47" y="191.5" >std::_..</text>
+</g>
+<g >
+<title>choose_next_point   (42 samples, 3.97%)</title><rect x="62.5" y="213" width="46.9" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="65.47" y="223.5" >choo..</text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (27 samples, 2.55%)</title><rect x="194.2" y="117" width="30.1" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="197.20" y="127.5" >st..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_check_len   (1 samples, 0.09%)</title><rect x="224.3" y="149" width="1.2" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="227.34" y="159.5" ></text>
+</g>
+<g >
+<title>malloc   (4 samples, 0.38%)</title><rect x="1128.6" y="117" width="4.5" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1131.60" y="127.5" ></text>
+</g>
+<g >
+<title>operator delete   (3 samples, 0.28%)</title><rect x="1133.1" y="133" width="3.3" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1136.07" y="143.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (6 samples, 0.57%)</title><rect x="568.2" y="133" width="6.7" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="571.18" y="143.5" ></text>
+</g>
+<g >
+<title>std::find&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt; &gt;   (17 samples, 1.61%)</title><rect x="1102.9" y="229" width="19.0" height="15.0" fill="rgb(232,124,29)" rx="2" ry="2" />
+<text  x="1105.92" y="239.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::~_Vector_base   (2 samples, 0.19%)</title><rect x="1185.5" y="229" width="2.3" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="1188.53" y="239.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (8 samples, 0.76%)</title><rect x="1138.6" y="133" width="9.0" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="1141.65" y="143.5" ></text>
+</g>
+<g >
+<title>round@plt   (1 samples, 0.09%)</title><rect x="1095.1" y="213" width="1.1" height="15.0" fill="rgb(250,208,49)" rx="2" ry="2" />
+<text  x="1098.11" y="223.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (2 samples, 0.19%)</title><rect x="1176.6" y="165" width="2.2" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="1179.60" y="175.5" ></text>
+</g>
+<g >
+<title>operator delete   (43 samples, 4.07%)</title><rect x="792.6" y="117" width="48.0" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="795.57" y="127.5" >oper..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::vector   (68 samples, 6.43%)</title><rect x="867.4" y="213" width="75.9" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="870.37" y="223.5" >std::vec..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_base   (8 samples, 0.76%)</title><rect x="1138.6" y="213" width="9.0" height="15.0" fill="rgb(205,3,0)" rx="2" ry="2" />
+<text  x="1141.65" y="223.5" ></text>
+</g>
+<g >
+<title>malloc   (35 samples, 3.31%)</title><rect x="155.1" y="69" width="39.1" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="158.13" y="79.5" >mal..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (2 samples, 0.19%)</title><rect x="1052.7" y="165" width="2.2" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="1055.69" y="175.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::emplace_back&lt;std::pair&lt;int, int&gt; &gt;   (2 samples, 0.19%)</title><rect x="1176.6" y="213" width="2.2" height="15.0" fill="rgb(211,27,6)" rx="2" ry="2" />
+<text  x="1179.60" y="223.5" ></text>
+</g>
+<g >
+<title>free   (26 samples, 2.46%)</title><rect x="195.3" y="53" width="29.0" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="198.32" y="63.5" >fr..</text>
+</g>
+<g >
+<title>operator new(unsigned long)@plt   (2 samples, 0.19%)</title><rect x="564.8" y="85" width="2.3" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="567.83" y="95.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (101 samples, 9.56%)</title><rect x="117.2" y="197" width="112.7" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="120.17" y="207.5" >std::vector&lt;s..</text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (56 samples, 5.30%)</title><rect x="724.5" y="149" width="62.5" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="727.47" y="159.5" >std::a..</text>
+</g>
+<g >
+<title>operator delete   (26 samples, 2.46%)</title><rect x="195.3" y="69" width="29.0" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="198.32" y="79.5" >op..</text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;::operator++   (1 samples, 0.09%)</title><rect x="1109.6" y="181" width="1.1" height="15.0" fill="rgb(243,176,42)" rx="2" ry="2" />
+<text  x="1112.62" y="191.5" ></text>
+</g>
+<g >
+<title>std::construct_at&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt; const&amp;&gt;   (4 samples, 0.38%)</title><rect x="840.6" y="165" width="4.4" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="843.58" y="175.5" ></text>
+</g>
+<g >
+<title>std::__relocate_object_a&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (17 samples, 1.61%)</title><rect x="848.4" y="133" width="19.0" height="15.0" fill="rgb(242,173,41)" rx="2" ry="2" />
+<text  x="851.39" y="143.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (46 samples, 4.35%)</title><rect x="879.6" y="133" width="51.4" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="882.65" y="143.5" >std::..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_impl::_Vector_impl   (2 samples, 0.19%)</title><rect x="1100.7" y="181" width="2.2" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="1103.69" y="191.5" ></text>
+</g>
+<g >
+<title>std::__do_uninit_copy&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*&gt;   (10 samples, 0.95%)</title><rect x="931.0" y="149" width="11.2" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="934.00" y="159.5" ></text>
+</g>
+<g >
+<title>choose_next_point   (919 samples, 86.94%)</title><rect x="14.5" y="229" width="1025.9" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="17.47" y="239.5" >choose_next_point  </text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (48 samples, 4.54%)</title><rect x="787.0" y="165" width="53.6" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="789.99" y="175.5" >std::..</text>
+</g>
+<g >
+<title>operator delete(void*, unsigned long)@plt   (2 samples, 0.19%)</title><rect x="1038.2" y="117" width="2.2" height="15.0" fill="rgb(251,215,51)" rx="2" ry="2" />
+<text  x="1041.17" y="127.5" ></text>
+</g>
+<g >
+<title>choose_next_point   (1,057 samples, 100.00%)</title><rect x="10.0" y="309" width="1180.0" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="13.00" y="319.5" >choose_next_point  </text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; const&amp;&gt;   (2 samples, 0.19%)</title><rect x="1183.3" y="229" width="2.2" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="1186.30" y="239.5" ></text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (4 samples, 0.38%)</title><rect x="1178.8" y="213" width="4.5" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="1181.84" y="223.5" ></text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (4 samples, 0.38%)</title><rect x="1178.8" y="229" width="4.5" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="1181.84" y="239.5" ></text>
+</g>
+<g >
+<title>??   (28 samples, 2.65%)</title><rect x="809.3" y="69" width="31.3" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="812.32" y="79.5" >??  </text>
+</g>
+<g >
+<title>std::find&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt; &gt;   (99 samples, 9.37%)</title><rect x="590.5" y="213" width="110.5" height="15.0" fill="rgb(232,124,29)" rx="2" ry="2" />
+<text  x="593.51" y="223.5" >std::find&lt;__g..</text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (17 samples, 1.61%)</title><rect x="1102.9" y="213" width="19.0" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="1105.92" y="223.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;::operator++   (5 samples, 0.47%)</title><rect x="620.7" y="165" width="5.5" height="15.0" fill="rgb(243,176,42)" rx="2" ry="2" />
+<text  x="623.65" y="175.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (7 samples, 0.66%)</title><rect x="1125.3" y="165" width="7.8" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="1128.25" y="175.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (15 samples, 1.42%)</title><rect x="1121.9" y="229" width="16.7" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="1124.90" y="239.5" ></text>
+</g>
+<g >
+<title>operator delete   (79 samples, 7.47%)</title><rect x="950.0" y="101" width="88.2" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="952.98" y="111.5" >operator d..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (37 samples, 3.50%)</title><rect x="536.9" y="197" width="41.3" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="539.93" y="207.5" >std..</text>
+</g>
+<g >
+<title>std::find&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt; &gt;   (1 samples, 0.09%)</title><rect x="1188.9" y="277" width="1.1" height="15.0" fill="rgb(232,124,29)" rx="2" ry="2" />
+<text  x="1191.88" y="287.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (6 samples, 0.57%)</title><rect x="568.2" y="101" width="6.7" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="571.18" y="111.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (45 samples, 4.26%)</title><rect x="144.0" y="133" width="50.2" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="146.96" y="143.5" >std::..</text>
+</g>
+<g >
+<title>roundf64   (5 samples, 0.47%)</title><rect x="531.3" y="197" width="5.6" height="15.0" fill="rgb(240,163,39)" rx="2" ry="2" />
+<text  x="534.34" y="207.5" ></text>
+</g>
+<g >
+<title>??   (16 samples, 1.51%)</title><rect x="206.5" y="37" width="17.8" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="209.48" y="47.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (46 samples, 4.35%)</title><rect x="879.6" y="117" width="51.4" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="882.65" y="127.5" >std::..</text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt;::operator()&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt; &gt;   (65 samples, 6.15%)</title><rect x="626.2" y="165" width="72.6" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="629.23" y="175.5" >__gnu_cx..</text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1183.3" y="165" width="2.2" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1186.30" y="175.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::construct&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt; const&amp;&gt;   (4 samples, 0.38%)</title><rect x="840.6" y="181" width="4.4" height="15.0" fill="rgb(218,62,15)" rx="2" ry="2" />
+<text  x="843.58" y="191.5" ></text>
+</g>
+<g >
+<title>operator delete   (81 samples, 7.66%)</title><rect x="947.7" y="117" width="90.5" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="950.75" y="127.5" >operator d..</text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1185.5" y="165" width="2.3" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1188.53" y="175.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::vector   (2 samples, 0.19%)</title><rect x="1100.7" y="213" width="2.2" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="1103.69" y="223.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::emplace_back&lt;std::pair&lt;int, int&gt; &gt;   (101 samples, 9.56%)</title><rect x="117.2" y="181" width="112.7" height="15.0" fill="rgb(211,27,6)" rx="2" ry="2" />
+<text  x="120.17" y="191.5" >std::vector&lt;s..</text>
+</g>
+<g >
+<title>operator delete   (1 samples, 0.09%)</title><rect x="1053.8" y="101" width="1.1" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1056.80" y="111.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (45 samples, 4.26%)</title><rect x="144.0" y="101" width="50.2" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="146.96" y="111.5" >std::..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::emplace_back&lt;std::pair&lt;int, int&gt; &gt;   (3 samples, 0.28%)</title><rect x="1097.3" y="197" width="3.4" height="15.0" fill="rgb(211,27,6)" rx="2" ry="2" />
+<text  x="1100.34" y="207.5" ></text>
+</g>
+<g >
+<title>choose_next_point   (1,038 samples, 98.20%)</title><rect x="10.0" y="245" width="1158.8" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="13.00" y="255.5" >choose_next_point  </text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (84 samples, 7.95%)</title><rect x="946.6" y="181" width="93.8" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="949.63" y="191.5" >std::_Vecto..</text>
+</g>
+<g >
+<title>operator new   (3 samples, 0.28%)</title><rect x="1097.3" y="101" width="3.4" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1100.34" y="111.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt;::operator()&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt; &gt;   (1 samples, 0.09%)</title><rect x="1182.2" y="197" width="1.1" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1185.19" y="207.5" ></text>
+</g>
+<g >
+<title>free   (1 samples, 0.09%)</title><rect x="1053.8" y="69" width="1.1" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1056.80" y="79.5" ></text>
+</g>
+<g >
+<title>operator delete   (2 samples, 0.19%)</title><rect x="1183.3" y="149" width="2.2" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1186.30" y="159.5" ></text>
+</g>
+<g >
+<title>operator delete   (1 samples, 0.09%)</title><rect x="1053.8" y="85" width="1.1" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1056.80" y="95.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_create_storage   (8 samples, 0.76%)</title><rect x="1138.6" y="197" width="9.0" height="15.0" fill="rgb(253,221,52)" rx="2" ry="2" />
+<text  x="1141.65" y="207.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::construct&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt; &gt;   (2 samples, 0.19%)</title><rect x="1136.4" y="133" width="2.2" height="15.0" fill="rgb(223,85,20)" rx="2" ry="2" />
+<text  x="1139.41" y="143.5" ></text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (99 samples, 9.37%)</title><rect x="590.5" y="197" width="110.5" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="593.51" y="207.5" >std::__find_i..</text>
+</g>
+<g >
+<title>operator delete   (6 samples, 0.57%)</title><rect x="568.2" y="69" width="6.7" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="571.18" y="79.5" ></text>
+</g>
+<g >
+<title>??   (1 samples, 0.09%)</title><rect x="1135.3" y="85" width="1.1" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1138.30" y="95.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (16 samples, 1.51%)</title><rect x="1150.9" y="165" width="17.9" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="1153.93" y="175.5" ></text>
+</g>
+<g >
+<title>??   (53 samples, 5.01%)</title><rect x="979.0" y="69" width="59.2" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="982.01" y="79.5" >??  </text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (16 samples, 1.51%)</title><rect x="1150.9" y="149" width="17.9" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1153.93" y="159.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (8 samples, 0.76%)</title><rect x="1138.6" y="149" width="9.0" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="1141.65" y="159.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; &gt;   (3 samples, 0.28%)</title><rect x="1097.3" y="181" width="3.4" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="1100.34" y="191.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; &gt;   (37 samples, 3.50%)</title><rect x="536.9" y="165" width="41.3" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="539.93" y="175.5" >std..</text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (56 samples, 5.30%)</title><rect x="724.5" y="165" width="62.5" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="727.47" y="175.5" >std::a..</text>
+</g>
+<g >
+<title>std::__relocate_object_a&lt;std::pair&lt;int, int&gt;, std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (2 samples, 0.19%)</title><rect x="1136.4" y="149" width="2.2" height="15.0" fill="rgb(242,173,41)" rx="2" ry="2" />
+<text  x="1139.41" y="159.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1185.5" y="181" width="2.3" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="1188.53" y="191.5" ></text>
+</g>
+<g >
+<title>operator delete   (1 samples, 0.09%)</title><rect x="1186.7" y="133" width="1.1" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1189.65" y="143.5" ></text>
+</g>
+<g >
+<title>gen_all_points   (108 samples, 10.22%)</title><rect x="109.4" y="213" width="120.5" height="15.0" fill="rgb(250,210,50)" rx="2" ry="2" />
+<text  x="112.36" y="223.5" >gen_all_points  </text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_impl_data::_Vector_impl_data   (2 samples, 0.19%)</title><rect x="1100.7" y="165" width="2.2" height="15.0" fill="rgb(252,216,51)" rx="2" ry="2" />
+<text  x="1103.69" y="175.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (10 samples, 0.95%)</title><rect x="1041.5" y="149" width="11.2" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="1044.52" y="159.5" ></text>
+</g>
+<g >
+<title>operator delete   (2 samples, 0.19%)</title><rect x="1185.5" y="149" width="2.3" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1188.53" y="159.5" ></text>
+</g>
+<g >
+<title>roundf64   (1 samples, 0.09%)</title><rect x="1096.2" y="213" width="1.1" height="15.0" fill="rgb(240,163,39)" rx="2" ry="2" />
+<text  x="1099.23" y="223.5" ></text>
+</g>
+<g >
+<title>operator delete   (16 samples, 1.51%)</title><rect x="1150.9" y="133" width="17.9" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1153.93" y="143.5" ></text>
+</g>
+<g >
+<title>operator new(unsigned long)@plt   (2 samples, 0.19%)</title><rect x="784.8" y="117" width="2.2" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="787.76" y="127.5" ></text>
+</g>
+<g >
+<title>??   (1 samples, 0.09%)</title><rect x="1184.4" y="101" width="1.1" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1187.42" y="111.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_S_relocate   (17 samples, 1.61%)</title><rect x="848.4" y="181" width="19.0" height="15.0" fill="rgb(229,111,26)" rx="2" ry="2" />
+<text  x="851.39" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (51 samples, 4.82%)</title><rect x="874.1" y="165" width="56.9" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="877.07" y="175.5" >std::_..</text>
+</g>
+<g >
+<title>??   (2 samples, 0.19%)</title><rect x="1136.4" y="101" width="2.2" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1139.41" y="111.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1052.7" y="117" width="2.2" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1055.69" y="127.5" ></text>
+</g>
+<g >
+<title>std::__relocate_a_1&lt;std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt;*, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (4 samples, 0.38%)</title><rect x="225.5" y="117" width="4.4" height="15.0" fill="rgb(209,21,5)" rx="2" ry="2" />
+<text  x="228.46" y="127.5" ></text>
+</g>
+<g >
+<title>get_inbetween_points   (9 samples, 0.85%)</title><rect x="1168.8" y="245" width="10.0" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="1171.79" y="255.5" ></text>
+</g>
+<g >
+<title>std::__uninitialized_copy_a&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt; &gt;   (10 samples, 0.95%)</title><rect x="931.0" y="197" width="11.2" height="15.0" fill="rgb(246,189,45)" rx="2" ry="2" />
+<text  x="934.00" y="207.5" ></text>
+</g>
+<g >
+<title>operator new   (4 samples, 0.38%)</title><rect x="1128.6" y="133" width="4.5" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1131.60" y="143.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_base   (11 samples, 1.04%)</title><rect x="578.2" y="181" width="12.3" height="15.0" fill="rgb(205,3,0)" rx="2" ry="2" />
+<text  x="581.23" y="191.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (2 samples, 0.19%)</title><rect x="1183.3" y="245" width="2.2" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="1186.30" y="255.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::~vector   (2 samples, 0.19%)</title><rect x="1185.5" y="245" width="2.3" height="15.0" fill="rgb(243,175,42)" rx="2" ry="2" />
+<text  x="1188.53" y="255.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (7 samples, 0.66%)</title><rect x="567.1" y="149" width="7.8" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="570.07" y="159.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (2 samples, 0.19%)</title><rect x="1183.3" y="213" width="2.2" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="1186.30" y="223.5" ></text>
+</g>
+<g >
+<title>??   (1 samples, 0.09%)</title><rect x="1053.8" y="53" width="1.1" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1056.80" y="63.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1052.7" y="149" width="2.2" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="1055.69" y="159.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::size   (1 samples, 0.09%)</title><rect x="942.2" y="197" width="1.1" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="945.17" y="207.5" ></text>
+</g>
+<g >
+<title>get_inbetween_points   (42 samples, 3.97%)</title><rect x="1056.0" y="229" width="46.9" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="1059.04" y="239.5" >get_..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (7 samples, 0.66%)</title><rect x="1125.3" y="197" width="7.8" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="1128.25" y="207.5" ></text>
+</g>
+<g >
+<title>free   (42 samples, 3.97%)</title><rect x="793.7" y="85" width="46.9" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="796.69" y="95.5" >free  </text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (56 samples, 5.30%)</title><rect x="724.5" y="133" width="62.5" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="727.47" y="143.5" >std::_..</text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (48 samples, 4.54%)</title><rect x="787.0" y="149" width="53.6" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="789.99" y="159.5" >std::..</text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (83 samples, 7.85%)</title><rect x="947.7" y="133" width="92.7" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="950.75" y="143.5" >std::__new_..</text>
+</g>
+<g >
+<title>std::fmod&lt;double, int&gt;   (8 samples, 0.76%)</title><rect x="1086.2" y="197" width="8.9" height="15.0" fill="rgb(217,55,13)" rx="2" ry="2" />
+<text  x="1089.18" y="207.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::size   (3 samples, 0.28%)</title><rect x="574.9" y="133" width="3.3" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="577.88" y="143.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt;::operator()&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt; &gt;   (8 samples, 0.76%)</title><rect x="1110.7" y="181" width="9.0" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1113.74" y="191.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (6 samples, 0.57%)</title><rect x="568.2" y="117" width="6.7" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="571.18" y="127.5" ></text>
+</g>
+<g >
+<title>get_inbetween_points   (323 samples, 30.56%)</title><rect x="229.9" y="213" width="360.6" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="232.92" y="223.5" >get_inbetween_points  </text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (17 samples, 1.61%)</title><rect x="1102.9" y="197" width="19.0" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="1105.92" y="207.5" ></text>
+</g>
+<g >
+<title>operator new   (41 samples, 3.88%)</title><rect x="148.4" y="85" width="45.8" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="151.43" y="95.5" >oper..</text>
+</g>
+<g >
+<title>std::operator==&lt;int, int&gt;   (1 samples, 0.09%)</title><rect x="1182.2" y="181" width="1.1" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="1185.19" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (2 samples, 0.19%)</title><rect x="1185.5" y="213" width="2.3" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="1188.53" y="223.5" ></text>
+</g>
+<g >
+<title>is_close_int   (12 samples, 1.14%)</title><rect x="1081.7" y="213" width="13.4" height="15.0" fill="rgb(213,40,9)" rx="2" ry="2" />
+<text  x="1084.71" y="223.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (45 samples, 4.26%)</title><rect x="144.0" y="117" width="50.2" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="146.96" y="127.5" >std::..</text>
+</g>
+<g >
+<title>std::fmod&lt;double, int&gt;   (2 samples, 0.19%)</title><rect x="1173.3" y="213" width="2.2" height="15.0" fill="rgb(217,55,13)" rx="2" ry="2" />
+<text  x="1176.25" y="223.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (2 samples, 0.19%)</title><rect x="1185.5" y="197" width="2.3" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="1188.53" y="207.5" ></text>
+</g>
+<g >
+<title>std::operator==&lt;int, int&gt;   (8 samples, 0.76%)</title><rect x="1110.7" y="165" width="9.0" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="1113.74" y="175.5" ></text>
+</g>
+<g >
+<title>std::fmod&lt;double, int&gt;   (86 samples, 8.14%)</title><rect x="429.8" y="181" width="96.0" height="15.0" fill="rgb(217,55,13)" rx="2" ry="2" />
+<text  x="432.75" y="191.5" >std::fmod&lt;d..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (2 samples, 0.19%)</title><rect x="1176.6" y="181" width="2.2" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="1179.60" y="191.5" ></text>
+</g>
+<g >
+<title>std::__relocate_a&lt;std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt;*, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;   (2 samples, 0.19%)</title><rect x="1136.4" y="181" width="2.2" height="15.0" fill="rgb(239,160,38)" rx="2" ry="2" />
+<text  x="1139.41" y="191.5" ></text>
+</g>
+<g >
+<title>operator new(unsigned long)@plt   (1 samples, 0.09%)</title><rect x="1051.6" y="101" width="1.1" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1054.57" y="111.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_check_len   (3 samples, 0.28%)</title><rect x="845.0" y="181" width="3.4" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="848.04" y="191.5" ></text>
+</g>
+<g >
+<title>choose_next_point   (1,055 samples, 99.81%)</title><rect x="10.0" y="261" width="1177.8" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="13.00" y="271.5" >choose_next_point  </text>
+</g>
+<g >
+<title>std::__uninitialized_copy_a&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*, std::pair&lt;int, int&gt; &gt;   (1 samples, 0.09%)</title><rect x="1147.6" y="213" width="1.1" height="15.0" fill="rgb(246,189,45)" rx="2" ry="2" />
+<text  x="1150.58" y="223.5" ></text>
+</g>
+<g >
+<title>__gnu_cxx::operator-&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;   (2 samples, 0.19%)</title><rect x="1119.7" y="181" width="2.2" height="15.0" fill="rgb(236,146,35)" rx="2" ry="2" />
+<text  x="1122.67" y="191.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (10 samples, 0.95%)</title><rect x="1041.5" y="133" width="11.2" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="1044.52" y="143.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (83 samples, 7.85%)</title><rect x="947.7" y="149" width="92.7" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="950.75" y="159.5" >std::alloca..</text>
+</g>
+<g >
+<title>malloc   (20 samples, 1.89%)</title><rect x="542.5" y="69" width="22.3" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="545.51" y="79.5" >m..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_S_relocate   (4 samples, 0.38%)</title><rect x="225.5" y="149" width="4.4" height="15.0" fill="rgb(229,111,26)" rx="2" ry="2" />
+<text  x="228.46" y="159.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::deallocate   (3 samples, 0.28%)</title><rect x="1133.1" y="149" width="3.3" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1136.07" y="159.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (48 samples, 4.54%)</title><rect x="787.0" y="181" width="53.6" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="789.99" y="191.5" >std::..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (45 samples, 4.26%)</title><rect x="144.0" y="149" width="50.2" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="146.96" y="159.5" >std::..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_base   (2 samples, 0.19%)</title><rect x="1100.7" y="197" width="2.2" height="15.0" fill="rgb(205,3,0)" rx="2" ry="2" />
+<text  x="1103.69" y="207.5" ></text>
+</g>
+<g >
+<title>std::__uninitialized_copy&lt;false&gt;::__uninit_copy&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*&gt;   (10 samples, 0.95%)</title><rect x="931.0" y="165" width="11.2" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="934.00" y="175.5" ></text>
+</g>
+<g >
+<title>operator delete   (16 samples, 1.51%)</title><rect x="1150.9" y="117" width="17.9" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1153.93" y="127.5" ></text>
+</g>
+<g >
+<title>operator delete   (6 samples, 0.57%)</title><rect x="568.2" y="85" width="6.7" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="571.18" y="95.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; &gt;   (2 samples, 0.19%)</title><rect x="1176.6" y="197" width="2.2" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="1179.60" y="207.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (7 samples, 0.66%)</title><rect x="1125.3" y="149" width="7.8" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="1128.25" y="159.5" ></text>
+</g>
+<g >
+<title>malloc   (3 samples, 0.28%)</title><rect x="1097.3" y="85" width="3.4" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1100.34" y="95.5" ></text>
+</g>
+<g >
+<title>std::__find_if&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_equals_val&lt;std::pair&lt;int, int&gt; const&gt; &gt;   (99 samples, 9.37%)</title><rect x="590.5" y="181" width="110.5" height="15.0" fill="rgb(234,135,32)" rx="2" ry="2" />
+<text  x="593.51" y="191.5" >std::__find_i..</text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (25 samples, 2.37%)</title><rect x="539.2" y="101" width="27.9" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="542.16" y="111.5" >s..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (27 samples, 2.55%)</title><rect x="194.2" y="149" width="30.1" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="197.20" y="159.5" >st..</text>
+</g>
+<g >
+<title>operator new   (23 samples, 2.18%)</title><rect x="539.2" y="85" width="25.6" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="542.16" y="95.5" >o..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_Vector_impl::_Vector_impl   (11 samples, 1.04%)</title><rect x="578.2" y="165" width="12.3" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="581.23" y="175.5" ></text>
+</g>
+<g >
+<title>main   (1,057 samples, 100.00%)</title><rect x="10.0" y="325" width="1180.0" height="15.0" fill="rgb(230,117,28)" rx="2" ry="2" />
+<text  x="13.00" y="335.5" >main  </text>
+</g>
+<g >
+<title>std::__uninitialized_copy&lt;false&gt;::__uninit_copy&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*&gt;   (1 samples, 0.09%)</title><rect x="1147.6" y="181" width="1.1" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="1150.58" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (8 samples, 0.76%)</title><rect x="1138.6" y="181" width="9.0" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="1141.65" y="191.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::~_Vector_base   (87 samples, 8.23%)</title><rect x="943.3" y="197" width="97.1" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="946.28" y="207.5" >std::_Vecto..</text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (16 samples, 1.51%)</title><rect x="1150.9" y="181" width="17.9" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="1153.93" y="191.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::emplace_back&lt;std::pair&lt;int, int&gt; &gt;   (13 samples, 1.23%)</title><rect x="1041.5" y="197" width="14.5" height="15.0" fill="rgb(211,27,6)" rx="2" ry="2" />
+<text  x="1044.52" y="207.5" ></text>
+</g>
+<g >
+<title>std::allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (25 samples, 2.37%)</title><rect x="539.2" y="117" width="27.9" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="542.16" y="127.5" >s..</text>
+</g>
+<g >
+<title>gen_all_points   (14 samples, 1.32%)</title><rect x="1040.4" y="229" width="15.6" height="15.0" fill="rgb(250,210,50)" rx="2" ry="2" />
+<text  x="1043.41" y="239.5" ></text>
+</g>
+<g >
+<title>free   (6 samples, 0.57%)</title><rect x="568.2" y="53" width="6.7" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="571.18" y="63.5" ></text>
+</g>
+<g >
+<title>std::uninitialized_copy&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*&gt;   (1 samples, 0.09%)</title><rect x="1147.6" y="197" width="1.1" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="1150.58" y="207.5" ></text>
+</g>
+<g >
+<title>std::uninitialized_copy&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*&gt;   (10 samples, 0.95%)</title><rect x="931.0" y="181" width="11.2" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="934.00" y="191.5" ></text>
+</g>
+<g >
+<title>??   (16 samples, 1.51%)</title><rect x="849.5" y="85" width="17.9" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="852.51" y="95.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (25 samples, 2.37%)</title><rect x="539.2" y="133" width="27.9" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="542.16" y="143.5" >s..</text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (3 samples, 0.28%)</title><rect x="1133.1" y="181" width="3.3" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="1136.07" y="191.5" ></text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::deallocate   (27 samples, 2.55%)</title><rect x="194.2" y="133" width="30.1" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="197.20" y="143.5" >st..</text>
+</g>
+<g >
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::allocate   (7 samples, 0.66%)</title><rect x="1125.3" y="181" width="7.8" height="15.0" fill="rgb(208,16,4)" rx="2" ry="2" />
+<text  x="1128.25" y="191.5" ></text>
+</g>
+<g >
+<title>operator delete   (2 samples, 0.19%)</title><rect x="1183.3" y="133" width="2.2" height="15.0" fill="rgb(234,134,32)" rx="2" ry="2" />
+<text  x="1186.30" y="143.5" ></text>
+</g>
+<g >
+<title>all (1,057 samples, 100%)</title><rect x="10.0" y="341" width="1180.0" height="15.0" fill="rgb(213,39,9)" rx="2" ry="2" />
+<text  x="13.00" y="351.5" ></text>
+</g>
+<g >
+<title>malloc   (41 samples, 3.88%)</title><rect x="885.2" y="85" width="45.8" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="888.23" y="95.5" >mall..</text>
+</g>
+<g >
+<title>__gnu_cxx::operator-&lt;std::pair&lt;int, int&gt;*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;   (2 samples, 0.19%)</title><rect x="698.8" y="165" width="2.2" height="15.0" fill="rgb(236,146,35)" rx="2" ry="2" />
+<text  x="701.80" y="175.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (3 samples, 0.28%)</title><rect x="1097.3" y="165" width="3.4" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="1100.34" y="175.5" ></text>
+</g>
+<g >
+<title>operator new   (46 samples, 4.35%)</title><rect x="879.6" y="101" width="51.4" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="882.65" y="111.5" >opera..</text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_deallocate   (18 samples, 1.70%)</title><rect x="1148.7" y="197" width="20.1" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="1151.69" y="207.5" ></text>
+</g>
+<g >
+<title>std::abs   (4 samples, 0.38%)</title><rect x="425.3" y="181" width="4.5" height="15.0" fill="rgb(209,22,5)" rx="2" ry="2" />
+<text  x="428.29" y="191.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::push_back   (3 samples, 0.28%)</title><rect x="1097.3" y="213" width="3.4" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="1100.34" y="223.5" ></text>
+</g>
+<g >
+<title>free   (77 samples, 7.28%)</title><rect x="952.2" y="85" width="86.0" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="955.21" y="95.5" >free  </text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (10 samples, 0.95%)</title><rect x="1041.5" y="165" width="11.2" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="1044.52" y="175.5" ></text>
+</g>
+<g >
+<title>is_close_int   (2 samples, 0.19%)</title><rect x="1173.3" y="229" width="2.2" height="15.0" fill="rgb(213,40,9)" rx="2" ry="2" />
+<text  x="1176.25" y="239.5" ></text>
+</g>
+<g >
+<title>std::abs   (1 samples, 0.09%)</title><rect x="1085.1" y="197" width="1.1" height="15.0" fill="rgb(209,22,5)" rx="2" ry="2" />
+<text  x="1088.06" y="207.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; const&amp;&gt;   (143 samples, 13.53%)</title><rect x="707.7" y="197" width="159.7" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="710.73" y="207.5" >std::vector&lt;std::pai..</text>
+</g>
+<g >
+<title>free   (1 samples, 0.09%)</title><rect x="1186.7" y="117" width="1.1" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1189.65" y="127.5" ></text>
+</g>
+<g >
+<title>std::_Vector_base&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_allocate   (25 samples, 2.37%)</title><rect x="539.2" y="149" width="27.9" height="15.0" fill="rgb(206,8,2)" rx="2" ry="2" />
+<text  x="542.16" y="159.5" >s..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; &gt;   (93 samples, 8.80%)</title><rect x="126.1" y="165" width="103.8" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="129.10" y="175.5" >std::vector&lt;..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::vector   (11 samples, 1.04%)</title><rect x="578.2" y="197" width="12.3" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="581.23" y="207.5" ></text>
+</g>
+<g >
+<title>malloc   (41 samples, 3.88%)</title><rect x="739.0" y="101" width="45.8" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="741.99" y="111.5" >mall..</text>
+</g>
+<g >
+<title>std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt;::_M_realloc_insert&lt;std::pair&lt;int, int&gt; &gt;   (13 samples, 1.23%)</title><rect x="1041.5" y="181" width="14.5" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="1044.52" y="191.5" ></text>
+</g>
+<g >
+<title>std::__new_allocator&lt;std::pair&lt;int, int&gt; &gt;::allocate   (3 samples, 0.28%)</title><rect x="1097.3" y="117" width="3.4" height="15.0" fill="rgb(222,81,19)" rx="2" ry="2" />
+<text  x="1100.34" y="127.5" ></text>
+</g>
+<g >
+<title>std::__do_uninit_copy&lt;__gnu_cxx::__normal_iterator&lt;std::pair&lt;int, int&gt; const*, std::vector&lt;std::pair&lt;int, int&gt;, std::allocator&lt;std::pair&lt;int, int&gt; &gt; &gt; &gt;, std::pair&lt;int, int&gt;*&gt;   (1 samples, 0.09%)</title><rect x="1147.6" y="165" width="1.1" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="1150.58" y="175.5" ></text>
+</g>
+</g>
+</svg>

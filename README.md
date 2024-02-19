@@ -102,3 +102,20 @@ g++ (classic): 17.2s,
 g++ (-O3): 2.2s,
 clang++ (classic): 15.6s,
 clang++ (-O3): 2.3s
+
+
+## Attempt 8
+While implementing the earlier algorithms, I mistakenly implemented an array (Vec) in Rust rather than a set. When correcting the mistake, I noticed that the set solution was slower (note that in Attempt 3 I replaced arrays with sets for a performance gain !).
+
+So here I am now, replacing sets with arrays. Every script had a performance gain, Go and C++ in particular.
+
+Python + numba: 3.3s
+
+Rust: 1.5s
+![](attempt8/rust/attempt8.svg)
+
+Go: 3.9s
+![](attempt8/go/attempt8.svg)
+
+C++: 1.0s
+![](attempt8/cpp/attempt8.svg)
