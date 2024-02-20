@@ -11,5 +11,10 @@ edition = "2021"
 name = "attempt10"
 path = "attempt10.rs"
 
+[lib]
+name = "mylib"
+path = "mylib.rs"
+proc-macro = true
+
 [profile.release]
 debug = true

@@ -1,6 +1,9 @@
+use mylib::make_all_points;
+
 const SIZE: isize = 4;
 const MIN_LEN: usize = 4;
 const MAX_LEN: usize = 7;
+make_all_points!(4); // create ALL_POINTS const. Pass SIZE as argument
 
 fn is_close_int(n: f64) -> bool {
     let n = n.abs() % 1.0;
@@ -55,12 +58,6 @@ fn test_get_inbetween_points() {
     assert_eq!(get_inbetween_points(&(0, 0), &(2, 0)), vec![(1, 0)]);
 }
 
-fn gen_all_points() -> Vec<(isize, isize)> {
-    (0..SIZE)
-        .flat_map(move |x| (0..SIZE).map(move |y| (x, y)))
-        .collect()
-}
-
 fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, isize)) -> isize {
     let mut found_possibilities = 0;
 
@@ -71,7 +68,7 @@ fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, 
         }
     }
 
-    for p in gen_all_points() {
+    for p in ALL_POINTS {
         if !used_points.contains(&p) {
             let mut valid = true;
 
@@ -96,7 +93,7 @@ fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, 
 fn main() {
     let mut total = 0;
 
-    for p in gen_all_points() {
+    for p in ALL_POINTS {
         println!("Starting start point {:?} ({})", p, to_number_0(&p));
         let mut used_points = vec![p];
         total += choose_next_point(&mut used_points, p);
