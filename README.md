@@ -140,3 +140,5 @@ Go: 3.7s
 
 C++: 0.69s
 ![](attempt9/cpp/attempt9.svg)
+
+## Note: at this point I made a x570 speed improvement (Going from 4m39 (399s) in attempt 1 to 0.7s in attempt 9 for size 4 and max size 7)
