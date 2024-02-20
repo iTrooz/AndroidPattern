@@ -59,6 +59,10 @@ I also used numba to accelerate the code
 
 All of these results were pretty fast for size=3, so I changed the config: from now on, I will test 4x4, but only for patterns of size <= 7
 
+Note that for the Rust and C+ flamegraphs, I used the https://github.com/jasonrohrer/wallClockProfiler profiler. You will need to apply the following patches to the setup:
+- https://github.com/brendangregg/FlameGraph/pull/331
+- https://github.com/jasonrohrer/wallClockProfiler/pull/10
+
 Results:
 
 ### Normal Python
@@ -91,7 +95,7 @@ go tool pprof -raw cpu.txt.tmp | stackcollapse-go.pl | flamegraph.pl > attempt7.
 ### C++
 g++ and -O3, speed was 2.2s
 
-flamegraph generated with https://github.com/jasonrohrer/wallClockProfiler using
+flamegraph generated using
 ```sh
 wallClockProfiler 500 ./attempt7_cpp > out.txt
 stackcollapse-wcp.pl out.txt | flamegraph.pl > attempt7.svg
