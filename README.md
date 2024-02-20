@@ -9,12 +9,12 @@ Attempts guidelines:
 - Each attempt modifies the scripts in all languages in the same way
 - I can modify earlier attempts to fix small errors/opportunistic optimisations if needed. If the resulted time is improved by a lot (e.g. beats the time of the next attempt) it should probably go into a new attempt at the end
 
-## Attempt 1
+## Attempt 1: naive
 Naive implementation in Python. Works for size=3 but not for size=4 (way too slow)
 
 time for size=3 -> 8.6s
 
-## Attempt 2
+## Attempt 2: to_number()
 
 I used [flame graphs](https://brendangregg.com/flamegraphs.html) to determine what was taking so long in the program. Using the screenshot below, I found out that `to_number()` was taking way to much time. After optimising it, the program was faster
 
@@ -25,24 +25,24 @@ Before
 After (3.6s for size=3)
 ![](attempt2/attempt2.svg)
 
-## Attempt 3
+## Attempt 3: sets instead of arrays
 According to the flame graph, the next thing that was taking too much time was `__eq__()`, but I wasn't doing class comparison in my code. Searching online, I found out that it was the list contains operator (`in`) that was doing that, because lists aren't hash-based. Following https://stackoverflow.com/a/53657523 I replaced my list with a dict, and the program was faster (2.4s for size=3)
 
 ![](attempt3/attempt3.svg)
 
-## Attempt 4
+## Attempt 4: remove classes
 The next thing I wanted to optimise was `genAllPoints()`, because it was a really special function, in that it wasn't doing any logic. I remembered that I had performance problems with classes in python in the past, and sure enough, that was it. Removing the Point class (and optimising even more the corresponding value put in the `result` set) made the program run faster (1.6s for size=3)
 
 ![](attempt4/attempt4.svg)
 
-## Attempt 5
+## Attempt 5: itertools
 Really small modification: using itertools instead of manual for-loops for generating points
 Speed is now 1.5s for size=3
 
 ![](attempt5/attempt5.svg)
 
 
-## Attempt 6
+## Attempt 6: remove main set for keeping track of possibilities
 Using a dict as a hash list with insertion order felt unclean, and the only reason we needed to keep insertion order was to be able to insert all possible patterns in a set for deduplication. I handled the deduplication directly in the logic by disallowing going to points which would require new intermediate points to be marked as visited, so no need for keeping insertion order anymore.
 
 Speed is now 0.65s for size=3
@@ -50,7 +50,7 @@ Note: at some point I also tried my own hash structure: a list of size SIZE*SIZE
 
 ![](attempt6/attempt6.svg)
 
-## Attempt 7
+## Attempt 7: Try in other languages
 At this point I wasn't sure what to optimise anything, so I tried porting it in different languages:
 - Rust
 - Go
@@ -103,7 +103,7 @@ g++ (-O3): 2.2s,
 clang++ (classic): 15.6s,
 clang++ (-O3): 2.3s
 
-## Attempt 8
+## Attempt 8: arrays instead of sets
 While implementing the earlier algorithms, I mistakenly implemented an array (Vec) in Rust rather than a set. When correcting the mistake, I noticed that the set solution was slower (note that in Attempt 3 I replaced arrays with sets for a performance gain !).
 
 So here I am now, replacing sets with arrays. Every script had a performance gain, Go and C++ in particular.
@@ -119,7 +119,7 @@ Go: 3.8s
 C++: 1.0s
 ![](attempt8/cpp/attempt8.svg)
 
-## Attempt 9
+## Attempt 9: use push/pop instead of clone/push
 In this attempt, I saw that for the Rust script, a big part of the time was spent doing Vec::push(). The only time when this method is called is when adding the new points when doing recursive calls. I had already noticed earlier that I could try to have a stack-based system instead of cloning/pushing, so I did that. That indeed resulted in a performance boost. Unfortunately, I wasn't able to optimise the Go script, because arrays in Go are weird, I'm not even sure if there is something I can optimise there (but probably, seeing the time differences).
 
 The speed gain is probably caused by the fact .clone() allocates just enough space for the current array size, so when you do .push() just after, you are reallocating everything. And indeed using https://users.rust-lang.org/t/best-way-to-clone-and-append-a-single-element/68675 (
