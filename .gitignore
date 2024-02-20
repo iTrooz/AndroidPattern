@@ -1,1 +1,4 @@
 *.tmp
+out.txt
+wcGDBLog.txt
+wcOut.txt
