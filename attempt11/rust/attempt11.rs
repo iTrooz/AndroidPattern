@@ -20,10 +20,6 @@ fn test_is_close_int() {
     assert!(!is_close_int(5.5));
 }
 
-fn to_number_0(p: &(isize, isize)) -> isize {
-    6 - p.1 * 3 + p.0
-}
-
 fn get_inbetween_points(p1: &(isize, isize), p2: &(isize, isize)) -> Vec<(isize, isize)> {
     let xdiff = p2.0 - p1.0;
 
@@ -94,7 +90,7 @@ fn main() {
     let mut total = 0;
 
     for p in ALL_POINTS {
-        println!("Starting start point {:?} ({})", p, to_number_0(&p));
+        println!("Starting start point {:?}", p);
         let mut used_points = vec![p];
         total += choose_next_point(&mut used_points, p);
         println!("Finished start point {:?}", p);

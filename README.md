@@ -152,5 +152,5 @@ From now on, I (think I ?) will only update the Rust script, to be able to itera
 ## Attempt 10: run Rust `gen_all_points()` at compile-time
 I couldn't make a cleaner solution, see https://discord.com/channels/172018499005317120/364870796830703627/1209812638582968350
 
-Time went to 0.50s
+Time went to 0.48s
 ![](attempt10/rust/attempt10.svg)
