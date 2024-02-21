@@ -1,0 +1,1305 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="438" onload="init(evt)" viewBox="0 0 1200 438" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:17px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 12 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="438.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="details" x="10.00" y="421" > </text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="421" > </text>
+<g id="frames">
+<g >
+<title>core::array::iter::{impl#2   (1 samples, 0.21%)</title><rect x="1182.6" y="293" width="2.5" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="1185.61" y="303.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity&lt;(isize, isize)&gt;   (2 samples, 0.42%)</title><rect x="1096.4" y="197" width="4.9" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="1099.39" y="207.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::alloc   (1 samples, 0.21%)</title><rect x="1123.5" y="101" width="2.4" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="1126.49" y="111.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (1 samples, 0.21%)</title><rect x="1123.5" y="181" width="2.4" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1126.49" y="191.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#5   (1 samples, 0.21%)</title><rect x="12.5" y="293" width="2.4" height="15.0" fill="rgb(217,56,13)" rx="2" ry="2" />
+<text  x="15.46" y="303.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::filter_map::{impl#2   (1 samples, 0.21%)</title><rect x="1180.1" y="213" width="2.5" height="15.0" fill="rgb(248,200,48)" rx="2" ry="2" />
+<text  x="1183.15" y="223.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::Global::alloc_impl   (9 samples, 1.88%)</title><rect x="433.7" y="101" width="22.2" height="15.0" fill="rgb(218,62,14)" rx="2" ry="2" />
+<text  x="436.72" y="111.5" >a..</text>
+</g>
+<g >
+<title>core::ops::function::impls::{impl#3   (7 samples, 1.46%)</title><rect x="1106.2" y="133" width="17.3" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1109.24" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_extend::{impl#1   (1 samples, 0.21%)</title><rect x="1125.9" y="197" width="2.5" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="1128.95" y="207.5" ></text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points   (1 samples, 0.21%)</title><rect x="1180.1" y="293" width="2.5" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="1183.15" y="303.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::vec::into_iter::IntoIter&lt;(isize, isize), alloc::alloc::Global&gt;&gt;   (28 samples, 5.85%)</title><rect x="729.3" y="261" width="69.0" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="732.33" y="271.5" >core::p..</text>
+</g>
+<g >
+<title>??   (4 samples, 0.84%)</title><rect x="1148.1" y="133" width="9.9" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="1151.12" y="143.5" ></text>
+</g>
+<g >
+<title>std::io::stdio::{impl#14   (1 samples, 0.21%)</title><rect x="1187.5" y="245" width="2.5" height="15.0" fill="rgb(208,14,3)" rx="2" ry="2" />
+<text  x="1190.54" y="255.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::for_each&lt;core::iter::adapters::map::Map&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#0   (1 samples, 0.21%)</title><rect x="1125.9" y="165" width="2.5" height="15.0" fill="rgb(228,109,26)" rx="2" ry="2" />
+<text  x="1128.95" y="175.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (2 samples, 0.42%)</title><rect x="1096.4" y="181" width="4.9" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="1099.39" y="191.5" ></text>
+</g>
+<g >
+<title>attempt10::is_close_int   (3 samples, 0.63%)</title><rect x="463.3" y="53" width="7.4" height="15.0" fill="rgb(233,129,30)" rx="2" ry="2" />
+<text  x="466.28" y="63.5" ></text>
+</g>
+<g >
+<title>core::ptr::mut_ptr::{impl#0   (1 samples, 0.21%)</title><rect x="160.3" y="245" width="2.4" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="163.27" y="255.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map&lt;core::ops::range::Range&lt;isize&gt;, (isize, isize), &amp;mut attempt10::get_inbetween_points::{closure_env#1   (6 samples, 1.25%)</title><rect x="458.4" y="133" width="14.7" height="15.0" fill="rgb(233,128,30)" rx="2" ry="2" />
+<text  x="461.35" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#14   (6 samples, 1.25%)</title><rect x="1143.2" y="229" width="14.8" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="1146.19" y="239.5" ></text>
+</g>
+<g >
+<title>__rust_dealloc   (4 samples, 0.84%)</title><rect x="729.3" y="133" width="9.9" height="15.0" fill="rgb(247,196,46)" rx="2" ry="2" />
+<text  x="732.33" y="143.5" ></text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points::{closure#1   (62 samples, 12.94%)</title><rect x="478.1" y="101" width="152.7" height="15.0" fill="rgb(216,54,13)" rx="2" ry="2" />
+<text  x="481.06" y="111.5" >attempt10::get_inbe..</text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter_nested::{impl#0   (83 samples, 17.33%)</title><rect x="426.3" y="197" width="204.5" height="15.0" fill="rgb(248,201,48)" rx="2" ry="2" />
+<text  x="429.33" y="207.5" >alloc::vec::spec_from_iter..</text>
+</g>
+<g >
+<title>free   (5 samples, 1.04%)</title><rect x="1145.7" y="149" width="12.3" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1148.66" y="159.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::try_fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::traits::iterator::Iterator::find_map::check::{closure_env#0   (1 samples, 0.21%)</title><rect x="1180.1" y="181" width="2.5" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="1183.15" y="191.5" ></text>
+</g>
+<g >
+<title>malloc   (1 samples, 0.21%)</title><rect x="1123.5" y="85" width="2.4" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1126.49" y="95.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (2 samples, 0.42%)</title><rect x="1096.4" y="165" width="4.9" height="15.0" fill="rgb(232,125,30)" rx="2" ry="2" />
+<text  x="1099.39" y="175.5" ></text>
+</g>
+<g >
+<title>std::io::Write::write_fmt&lt;std::io::stdio::StdoutLock&gt;   (1 samples, 0.21%)</title><rect x="1187.5" y="293" width="2.5" height="15.0" fill="rgb(232,128,30)" rx="2" ry="2" />
+<text  x="1190.54" y="303.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::vec::into_iter::{impl#14   (1 samples, 0.21%)</title><rect x="1185.1" y="261" width="2.4" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1188.07" y="271.5" ></text>
+</g>
+<g >
+<title>std::sys::unix::fd::FileDesc::write   (1 samples, 0.21%)</title><rect x="1187.5" y="149" width="2.5" height="15.0" fill="rgb(233,128,30)" rx="2" ry="2" />
+<text  x="1190.54" y="159.5" ></text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (17 samples, 3.55%)</title><rect x="162.7" y="261" width="41.9" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="165.73" y="271.5" >att..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map::check::{closure#0   (1 samples, 0.21%)</title><rect x="1180.1" y="165" width="2.5" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="1183.15" y="175.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::map::{impl#2   (1 samples, 0.21%)</title><rect x="1125.9" y="149" width="2.5" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="1128.95" y="159.5" ></text>
+</g>
+<g >
+<title>core::option::Option&lt;usize&gt;::map&lt;usize, (isize, isize), core::array::iter::{impl#2   (4 samples, 0.84%)</title><rect x="1133.3" y="261" width="9.9" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="1136.34" y="271.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::Global::alloc_impl   (1 samples, 0.21%)</title><rect x="1123.5" y="117" width="2.4" height="15.0" fill="rgb(218,62,14)" rx="2" ry="2" />
+<text  x="1126.49" y="127.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter::{impl#0   (19 samples, 3.97%)</title><rect x="630.8" y="213" width="46.8" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="633.79" y="223.5" >allo..</text>
+</g>
+<g >
+<title>__rust_dealloc   (1 samples, 0.21%)</title><rect x="1143.2" y="149" width="2.5" height="15.0" fill="rgb(247,196,46)" rx="2" ry="2" />
+<text  x="1146.19" y="159.5" ></text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (473 samples, 98.75%)</title><rect x="14.9" y="293" width="1165.2" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="17.93" y="303.5" >attempt10::choose_next_point  </text>
+</g>
+<g >
+<title>fmodf64   (1 samples, 0.21%)</title><rect x="1180.1" y="101" width="2.5" height="15.0" fill="rgb(230,116,27)" rx="2" ry="2" />
+<text  x="1183.15" y="111.5" ></text>
+</g>
+<g >
+<title>core::ptr::write&lt;(isize, isize)&gt;   (2 samples, 0.42%)</title><rect x="32.2" y="261" width="4.9" height="15.0" fill="rgb(229,110,26)" rx="2" ry="2" />
+<text  x="35.17" y="271.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;&gt;   (28 samples, 5.85%)</title><rect x="729.3" y="197" width="69.0" height="15.0" fill="rgb(220,70,16)" rx="2" ry="2" />
+<text  x="732.33" y="207.5" >core::p..</text>
+</g>
+<g >
+<title>core::mem::maybe_uninit::MaybeUninit&lt;(isize, isize)&gt;::assume_init_read&lt;(isize, isize)&gt;   (9 samples, 1.88%)</title><rect x="707.2" y="213" width="22.1" height="15.0" fill="rgb(239,160,38)" rx="2" ry="2" />
+<text  x="710.16" y="223.5" >c..</text>
+</g>
+<g >
+<title>alloc::alloc::alloc   (9 samples, 1.88%)</title><rect x="433.7" y="85" width="22.2" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="436.72" y="95.5" >a..</text>
+</g>
+<g >
+<title>core::array::iter::{impl#2   (21 samples, 4.38%)</title><rect x="677.6" y="261" width="51.7" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="680.60" y="271.5" >core:..</text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter::{impl#0   (12 samples, 2.51%)</title><rect x="1093.9" y="229" width="29.6" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="1096.92" y="239.5" >al..</text>
+</g>
+<g >
+<title>core::slice::{impl#0   (99 samples, 20.67%)</title><rect x="798.3" y="261" width="243.9" height="15.0" fill="rgb(210,26,6)" rx="2" ry="2" />
+<text  x="801.31" y="271.5" >core::slice::{impl#0  </text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter_nested::{impl#0   (1 samples, 0.21%)</title><rect x="1180.1" y="229" width="2.5" height="15.0" fill="rgb(248,201,48)" rx="2" ry="2" />
+<text  x="1183.15" y="239.5" ></text>
+</g>
+<g >
+<title>write   (1 samples, 0.21%)</title><rect x="1187.5" y="133" width="2.5" height="15.0" fill="rgb(214,45,10)" rx="2" ry="2" />
+<text  x="1190.54" y="143.5" ></text>
+</g>
+<g >
+<title>attempt10::is_close_int   (34 samples, 7.10%)</title><rect x="527.3" y="85" width="83.8" height="15.0" fill="rgb(233,129,30)" rx="2" ry="2" />
+<text  x="530.33" y="95.5" >attempt10..</text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::vec::into_iter::{impl#14   (6 samples, 1.25%)</title><rect x="1143.2" y="245" width="14.8" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1146.19" y="255.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::allocate_in&lt;(isize, isize), alloc::alloc::Global&gt;   (2 samples, 0.42%)</title><rect x="1096.4" y="149" width="4.9" height="15.0" fill="rgb(222,79,19)" rx="2" ry="2" />
+<text  x="1099.39" y="159.5" ></text>
+</g>
+<g >
+<title>core::slice::iter::{impl#181   (32 samples, 6.68%)</title><rect x="963.4" y="213" width="78.8" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="966.36" y="223.5" >core::sli..</text>
+</g>
+<g >
+<title>core::slice::cmp::{impl#10   (99 samples, 20.67%)</title><rect x="798.3" y="245" width="243.9" height="15.0" fill="rgb(227,104,25)" rx="2" ry="2" />
+<text  x="801.31" y="255.5" >core::slice::cmp::{impl#10  </text>
+</g>
+<g >
+<title>core::ops::function::impls::{impl#3   (62 samples, 12.94%)</title><rect x="478.1" y="117" width="152.7" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="481.06" y="127.5" >core::ops::function..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::collect&lt;core::iter::adapters::map::Map&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#0   (2 samples, 0.42%)</title><rect x="1123.5" y="261" width="4.9" height="15.0" fill="rgb(252,216,51)" rx="2" ry="2" />
+<text  x="1126.49" y="271.5" ></text>
+</g>
+<g >
+<title>core::ptr::non_null::{impl#12   (4 samples, 0.84%)</title><rect x="1032.3" y="197" width="9.9" height="15.0" fill="rgb(219,68,16)" rx="2" ry="2" />
+<text  x="1035.34" y="207.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::extend_trusted&lt;(isize, isize), alloc::alloc::Global, core::iter::adapters::map::Map&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#0   (2 samples, 0.42%)</title><rect x="670.2" y="165" width="4.9" height="15.0" fill="rgb(239,158,37)" rx="2" ry="2" />
+<text  x="673.21" y="175.5" ></text>
+</g>
+<g >
+<title>core::iter::range::{impl#6   (1 samples, 0.21%)</title><rect x="675.1" y="165" width="2.5" height="15.0" fill="rgb(225,94,22)" rx="2" ry="2" />
+<text  x="678.14" y="175.5" ></text>
+</g>
+<g >
+<title>core::cmp::impls::{impl#66   (2 samples, 0.42%)</title><rect x="473.1" y="101" width="5.0" height="15.0" fill="rgb(221,73,17)" rx="2" ry="2" />
+<text  x="476.13" y="111.5" ></text>
+</g>
+<g >
+<title>std::alloc::__default_lib_allocator::__rdl_alloc   (1 samples, 0.21%)</title><rect x="667.7" y="69" width="2.5" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="670.75" y="79.5" ></text>
+</g>
+<g >
+<title>malloc   (12 samples, 2.51%)</title><rect x="638.2" y="69" width="29.5" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="641.18" y="79.5" >ma..</text>
+</g>
+<g >
+<title>roundf64   (1 samples, 0.21%)</title><rect x="470.7" y="37" width="2.4" height="15.0" fill="rgb(240,163,39)" rx="2" ry="2" />
+<text  x="473.67" y="47.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map::check::{closure#0   (7 samples, 1.46%)</title><rect x="1106.2" y="149" width="17.3" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="1109.24" y="159.5" ></text>
+</g>
+<g >
+<title>fmodf64   (3 samples, 0.63%)</title><rect x="1116.1" y="85" width="7.4" height="15.0" fill="rgb(230,116,27)" rx="2" ry="2" />
+<text  x="1119.10" y="95.5" ></text>
+</g>
+<g >
+<title>core::ops::index_range::IndexRange::next_unchecked   (2 samples, 0.42%)</title><rect x="702.2" y="229" width="5.0" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="705.23" y="239.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map::check::{closure#0   (62 samples, 12.94%)</title><rect x="478.1" y="133" width="152.7" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="481.06" y="143.5" >core::iter::traits:..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::try_fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::traits::iterator::Iterator::find_map::check::{closure_env#0   (2 samples, 0.42%)</title><rect x="1101.3" y="133" width="4.9" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="1104.32" y="143.5" ></text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (478 samples, 99.79%)</title><rect x="10.0" y="325" width="1177.5" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="13.00" y="335.5" >attempt10::choose_next_point  </text>
+</g>
+<g >
+<title>std::io::buffered::linewritershim::{impl#1   (1 samples, 0.21%)</title><rect x="1187.5" y="213" width="2.5" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="1190.54" y="223.5" ></text>
+</g>
+<g >
+<title>??   (7 samples, 1.46%)</title><rect x="86.4" y="261" width="17.2" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="89.37" y="271.5" ></text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (478 samples, 99.79%)</title><rect x="10.0" y="357" width="1177.5" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="13.00" y="367.5" >attempt10::choose_next_point  </text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::extend_trusted&lt;(isize, isize), alloc::alloc::Global, core::iter::adapters::map::Map&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#0   (1 samples, 0.21%)</title><rect x="1125.9" y="181" width="2.5" height="15.0" fill="rgb(239,158,37)" rx="2" ry="2" />
+<text  x="1128.95" y="191.5" ></text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points   (192 samples, 40.08%)</title><rect x="204.6" y="261" width="473.0" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="207.61" y="271.5" >attempt10::get_inbetween_points  </text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points::{closure#1   (7 samples, 1.46%)</title><rect x="1106.2" y="117" width="17.3" height="15.0" fill="rgb(216,54,13)" rx="2" ry="2" />
+<text  x="1109.24" y="127.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::collect&lt;core::iter::adapters::filter_map::FilterMap&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#1   (1 samples, 0.21%)</title><rect x="1180.1" y="277" width="2.5" height="15.0" fill="rgb(242,172,41)" rx="2" ry="2" />
+<text  x="1183.15" y="287.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::map::{impl#2   (1 samples, 0.21%)</title><rect x="675.1" y="181" width="2.5" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="678.14" y="191.5" ></text>
+</g>
+<g >
+<title>core::option::Option&lt;usize&gt;::map&lt;usize, (isize, isize), core::array::iter::{impl#2   (9 samples, 1.88%)</title><rect x="707.2" y="245" width="22.1" height="15.0" fill="rgb(215,48,11)" rx="2" ry="2" />
+<text  x="710.16" y="255.5" >c..</text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (14 samples, 2.92%)</title><rect x="635.7" y="117" width="34.5" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="638.72" y="127.5" >al..</text>
+</g>
+<g >
+<title>alloc::vec::spec_extend::{impl#1   (2 samples, 0.42%)</title><rect x="670.2" y="181" width="4.9" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="673.21" y="191.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::alloc   (14 samples, 2.92%)</title><rect x="635.7" y="85" width="34.5" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="638.72" y="95.5" >al..</text>
+</g>
+<g >
+<title>core::ptr::const_ptr::{impl#0   (4 samples, 0.84%)</title><rect x="1133.3" y="213" width="9.9" height="15.0" fill="rgb(230,117,28)" rx="2" ry="2" />
+<text  x="1136.34" y="223.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_extend::{impl#0   (7 samples, 1.46%)</title><rect x="455.9" y="181" width="17.2" height="15.0" fill="rgb(226,100,24)" rx="2" ry="2" />
+<text  x="458.89" y="191.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::adapters::map::map_fold::{closure_env#0   (1 samples, 0.21%)</title><rect x="1125.9" y="133" width="2.5" height="15.0" fill="rgb(213,41,9)" rx="2" ry="2" />
+<text  x="1128.95" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (28 samples, 5.85%)</title><rect x="729.3" y="165" width="69.0" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="732.33" y="175.5" >alloc::..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::try_fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::traits::iterator::Iterator::find_map::check::{closure_env#0   (64 samples, 13.36%)</title><rect x="473.1" y="149" width="157.7" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="476.13" y="159.5" >core::iter::traits::..</text>
+</g>
+<g >
+<title>core::iter::adapters::map::map_fold::{closure#0   (1 samples, 0.21%)</title><rect x="1125.9" y="117" width="2.5" height="15.0" fill="rgb(223,83,20)" rx="2" ry="2" />
+<text  x="1128.95" y="127.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::filter_map::{impl#2   (6 samples, 1.25%)</title><rect x="458.4" y="149" width="14.7" height="15.0" fill="rgb(248,200,48)" rx="2" ry="2" />
+<text  x="461.35" y="159.5" ></text>
+</g>
+<g >
+<title>core::mem::maybe_uninit::MaybeUninit&lt;(isize, isize)&gt;::assume_init_read&lt;(isize, isize)&gt;   (4 samples, 0.84%)</title><rect x="1133.3" y="229" width="9.9" height="15.0" fill="rgb(239,160,38)" rx="2" ry="2" />
+<text  x="1136.34" y="239.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::{impl#3   (1 samples, 0.21%)</title><rect x="1185.1" y="213" width="2.4" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="1188.07" y="223.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::Global::alloc_impl   (2 samples, 0.42%)</title><rect x="1096.4" y="117" width="4.9" height="15.0" fill="rgb(218,62,14)" rx="2" ry="2" />
+<text  x="1099.39" y="127.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;&gt;   (1 samples, 0.21%)</title><rect x="1185.1" y="229" width="2.4" height="15.0" fill="rgb(220,70,16)" rx="2" ry="2" />
+<text  x="1188.07" y="239.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#14   (1 samples, 0.21%)</title><rect x="1185.1" y="245" width="2.4" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="1188.07" y="255.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (9 samples, 1.88%)</title><rect x="433.7" y="117" width="22.2" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="436.72" y="127.5" >a..</text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (1 samples, 0.21%)</title><rect x="1123.5" y="133" width="2.4" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1126.49" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::{impl#3   (6 samples, 1.25%)</title><rect x="1143.2" y="197" width="14.8" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="1146.19" y="207.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::allocate_in&lt;(isize, isize), alloc::alloc::Global&gt;   (9 samples, 1.88%)</title><rect x="433.7" y="133" width="22.2" height="15.0" fill="rgb(222,79,19)" rx="2" ry="2" />
+<text  x="436.72" y="143.5" >a..</text>
+</g>
+<g >
+<title>core::array::iter::{impl#2   (6 samples, 1.25%)</title><rect x="1128.4" y="277" width="14.8" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="1131.41" y="287.5" ></text>
+</g>
+<g >
+<title>core::slice::iter::{impl#181   (9 samples, 1.88%)</title><rect x="1158.0" y="245" width="22.1" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="1160.97" y="255.5" >c..</text>
+</g>
+<g >
+<title>alloc::alloc::Global::alloc_impl   (14 samples, 2.92%)</title><rect x="635.7" y="101" width="34.5" height="15.0" fill="rgb(218,62,14)" rx="2" ry="2" />
+<text  x="638.72" y="111.5" >al..</text>
+</g>
+<g >
+<title>core::slice::iter::{impl#181   (3 samples, 0.63%)</title><rect x="1172.8" y="229" width="7.3" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="1175.76" y="239.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::vec::into_iter::IntoIter&lt;(isize, isize), alloc::alloc::Global&gt;&gt;   (1 samples, 0.21%)</title><rect x="1185.1" y="293" width="2.4" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="1188.07" y="303.5" ></text>
+</g>
+<g >
+<title>std::io::buffered::bufwriter::BufWriter::flush_buf&lt;std::io::stdio::StdoutRaw&gt;   (1 samples, 0.21%)</title><rect x="1187.5" y="197" width="2.5" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="1190.54" y="207.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter_nested::{impl#1   (2 samples, 0.42%)</title><rect x="1123.5" y="213" width="4.9" height="15.0" fill="rgb(242,171,41)" rx="2" ry="2" />
+<text  x="1126.49" y="223.5" ></text>
+</g>
+<g >
+<title>core::ptr::read&lt;(isize, isize)&gt;   (1 samples, 0.21%)</title><rect x="12.5" y="277" width="2.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="15.46" y="287.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::for_each::call::{closure#0   (1 samples, 0.21%)</title><rect x="1125.9" y="101" width="2.5" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1128.95" y="111.5" ></text>
+</g>
+<g >
+<title>core::fmt::write   (1 samples, 0.21%)</title><rect x="1187.5" y="277" width="2.5" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="1190.54" y="287.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map::check::{closure#0   (1 samples, 0.21%)</title><rect x="1103.8" y="117" width="2.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="1106.78" y="127.5" ></text>
+</g>
+<g >
+<title>core::ops::function::impls::{impl#3   (1 samples, 0.21%)</title><rect x="1180.1" y="149" width="2.5" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1183.15" y="159.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity&lt;(isize, isize)&gt;   (1 samples, 0.21%)</title><rect x="1123.5" y="197" width="2.4" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="1126.49" y="207.5" ></text>
+</g>
+<g >
+<title>core::array::iter::{impl#2   (9 samples, 1.88%)</title><rect x="707.2" y="229" width="22.1" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="710.16" y="239.5" >c..</text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter::{impl#0   (1 samples, 0.21%)</title><rect x="1180.1" y="245" width="2.5" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="1183.15" y="255.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#5   (8 samples, 1.67%)</title><rect x="140.6" y="261" width="19.7" height="15.0" fill="rgb(217,56,13)" rx="2" ry="2" />
+<text  x="143.56" y="271.5" ></text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points   (35 samples, 7.31%)</title><rect x="1042.2" y="277" width="86.2" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="1045.19" y="287.5" >attempt10:..</text>
+</g>
+<g >
+<title>alloc::vec::spec_extend::{impl#0   (2 samples, 0.42%)</title><rect x="1101.3" y="197" width="4.9" height="15.0" fill="rgb(226,100,24)" rx="2" ry="2" />
+<text  x="1104.32" y="207.5" ></text>
+</g>
+<g >
+<title>alloc::vec::{impl#15   (1 samples, 0.21%)</title><rect x="160.3" y="261" width="2.4" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="163.27" y="271.5" ></text>
+</g>
+<g >
+<title>core::ptr::read&lt;(isize, isize)&gt;   (2 samples, 0.42%)</title><rect x="155.3" y="245" width="5.0" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="158.34" y="255.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter_nested::{impl#1   (19 samples, 3.97%)</title><rect x="630.8" y="197" width="46.8" height="15.0" fill="rgb(242,171,41)" rx="2" ry="2" />
+<text  x="633.79" y="207.5" >allo..</text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity&lt;(isize, isize)&gt;   (9 samples, 1.88%)</title><rect x="433.7" y="181" width="22.2" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="436.72" y="191.5" >a..</text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::extend_desugared&lt;(isize, isize), alloc::alloc::Global, core::iter::adapters::filter_map::FilterMap&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#1   (7 samples, 1.46%)</title><rect x="455.9" y="165" width="17.2" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="458.89" y="175.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::collect&lt;core::iter::adapters::filter_map::FilterMap&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#1   (12 samples, 2.51%)</title><rect x="1093.9" y="261" width="29.6" height="15.0" fill="rgb(242,172,41)" rx="2" ry="2" />
+<text  x="1096.92" y="271.5" >co..</text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (478 samples, 99.79%)</title><rect x="10.0" y="341" width="1177.5" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="13.00" y="351.5" >attempt10::choose_next_point  </text>
+</g>
+<g >
+<title>??   (1 samples, 0.21%)</title><rect x="10.0" y="293" width="2.5" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="13.00" y="303.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::vec::into_iter::{impl#14   (28 samples, 5.85%)</title><rect x="729.3" y="229" width="69.0" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="732.33" y="239.5" >core::p..</text>
+</g>
+<g >
+<title>core::iter::range::{impl#6   (2 samples, 0.42%)</title><rect x="473.1" y="133" width="5.0" height="15.0" fill="rgb(225,94,22)" rx="2" ry="2" />
+<text  x="476.13" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (1 samples, 0.21%)</title><rect x="1123.5" y="165" width="2.4" height="15.0" fill="rgb(232,125,30)" rx="2" ry="2" />
+<text  x="1126.49" y="175.5" ></text>
+</g>
+<g >
+<title>core::slice::cmp::{impl#10   (9 samples, 1.88%)</title><rect x="1158.0" y="261" width="22.1" height="15.0" fill="rgb(227,104,25)" rx="2" ry="2" />
+<text  x="1160.97" y="271.5" >c..</text>
+</g>
+<g >
+<title>core::ops::index_range::{impl#1   (2 samples, 0.42%)</title><rect x="1128.4" y="261" width="4.9" height="15.0" fill="rgb(214,44,10)" rx="2" ry="2" />
+<text  x="1131.41" y="271.5" ></text>
+</g>
+<g >
+<title>core::ptr::const_ptr::{impl#0   (9 samples, 1.88%)</title><rect x="707.2" y="197" width="22.1" height="15.0" fill="rgb(230,117,28)" rx="2" ry="2" />
+<text  x="710.16" y="207.5" >c..</text>
+</g>
+<g >
+<title>core::array::iter::{impl#2   (4 samples, 0.84%)</title><rect x="1133.3" y="245" width="9.9" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="1136.34" y="255.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (16 samples, 3.34%)</title><rect x="630.8" y="149" width="39.4" height="15.0" fill="rgb(232,125,30)" rx="2" ry="2" />
+<text  x="633.79" y="159.5" >all..</text>
+</g>
+<g >
+<title>alloc::vec::{impl#19   (2 samples, 0.42%)</title><rect x="670.2" y="69" width="4.9" height="15.0" fill="rgb(209,21,5)" rx="2" ry="2" />
+<text  x="673.21" y="79.5" ></text>
+</g>
+<g >
+<title>??   (9 samples, 1.88%)</title><rect x="773.7" y="117" width="22.1" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="776.67" y="127.5" >?..</text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter::{impl#0   (83 samples, 17.33%)</title><rect x="426.3" y="213" width="204.5" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="429.33" y="223.5" >alloc::vec::spec_from_iter..</text>
+</g>
+<g >
+<title>fmodf64   (3 samples, 0.63%)</title><rect x="463.3" y="37" width="7.4" height="15.0" fill="rgb(230,116,27)" rx="2" ry="2" />
+<text  x="466.28" y="47.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (16 samples, 3.34%)</title><rect x="630.8" y="165" width="39.4" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="633.79" y="175.5" >all..</text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::allocate_in&lt;(isize, isize), alloc::alloc::Global&gt;   (16 samples, 3.34%)</title><rect x="630.8" y="133" width="39.4" height="15.0" fill="rgb(222,79,19)" rx="2" ry="2" />
+<text  x="633.79" y="143.5" >all..</text>
+</g>
+<g >
+<title>malloc   (6 samples, 1.25%)</title><rect x="441.1" y="69" width="14.8" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="444.11" y="79.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::push&lt;(isize, isize), alloc::alloc::Global&gt;   (4 samples, 0.84%)</title><rect x="27.2" y="277" width="9.9" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="30.24" y="287.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::collect&lt;core::iter::adapters::filter_map::FilterMap&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#1   (83 samples, 17.33%)</title><rect x="426.3" y="245" width="204.5" height="15.0" fill="rgb(242,172,41)" rx="2" ry="2" />
+<text  x="429.33" y="255.5" >core::iter::traits::iterat..</text>
+</g>
+<g >
+<title>alloc::raw_vec::{impl#3   (28 samples, 5.85%)</title><rect x="729.3" y="181" width="69.0" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="732.33" y="191.5" >alloc::..</text>
+</g>
+<g >
+<title>attempt10::is_close_int   (3 samples, 0.63%)</title><rect x="1116.1" y="101" width="7.4" height="15.0" fill="rgb(233,129,30)" rx="2" ry="2" />
+<text  x="1119.10" y="111.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#14   (1 samples, 0.21%)</title><rect x="1185.1" y="277" width="2.4" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="1188.07" y="287.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::try_fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::traits::iterator::Iterator::find_map::check::{closure_env#0   (7 samples, 1.46%)</title><rect x="1106.2" y="165" width="17.3" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="1109.24" y="175.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map&lt;core::ops::range::Range&lt;isize&gt;, (isize, isize), &amp;mut attempt10::get_inbetween_points::{closure_env#1   (7 samples, 1.46%)</title><rect x="1106.2" y="181" width="17.3" height="15.0" fill="rgb(233,128,30)" rx="2" ry="2" />
+<text  x="1109.24" y="191.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (2 samples, 0.42%)</title><rect x="1096.4" y="133" width="4.9" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1099.39" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#14   (28 samples, 5.85%)</title><rect x="729.3" y="245" width="69.0" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="732.33" y="255.5" >alloc::..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map&lt;core::ops::range::Range&lt;isize&gt;, (isize, isize), &amp;mut attempt10::get_inbetween_points::{closure_env#1   (2 samples, 0.42%)</title><rect x="1101.3" y="149" width="4.9" height="15.0" fill="rgb(233,128,30)" rx="2" ry="2" />
+<text  x="1104.32" y="159.5" ></text>
+</g>
+<g >
+<title>std::sys::unix::stdio::{impl#3   (1 samples, 0.21%)</title><rect x="1187.5" y="165" width="2.5" height="15.0" fill="rgb(239,160,38)" rx="2" ry="2" />
+<text  x="1190.54" y="175.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter::{impl#0   (2 samples, 0.42%)</title><rect x="1123.5" y="229" width="4.9" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="1126.49" y="239.5" ></text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points::{closure#1   (1 samples, 0.21%)</title><rect x="1103.8" y="85" width="2.4" height="15.0" fill="rgb(216,54,13)" rx="2" ry="2" />
+<text  x="1106.78" y="95.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::dealloc   (6 samples, 1.25%)</title><rect x="1143.2" y="165" width="14.8" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1146.19" y="175.5" ></text>
+</g>
+<g >
+<title>malloc   (2 samples, 0.42%)</title><rect x="1096.4" y="85" width="4.9" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1099.39" y="95.5" ></text>
+</g>
+<g >
+<title>core::ptr::read&lt;(isize, isize)&gt;   (9 samples, 1.88%)</title><rect x="707.2" y="181" width="22.1" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="710.16" y="191.5" >c..</text>
+</g>
+<g >
+<title>fmodf64   (32 samples, 6.68%)</title><rect x="532.3" y="69" width="78.8" height="15.0" fill="rgb(230,116,27)" rx="2" ry="2" />
+<text  x="535.25" y="79.5" >fmodf64  </text>
+</g>
+<g >
+<title>alloc::alloc::dealloc   (28 samples, 5.85%)</title><rect x="729.3" y="149" width="69.0" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="732.33" y="159.5" >alloc::..</text>
+</g>
+<g >
+<title>alloc::alloc::dealloc   (1 samples, 0.21%)</title><rect x="1185.1" y="181" width="2.4" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="1188.07" y="191.5" ></text>
+</g>
+<g >
+<title>std::io::stdio::print_to&lt;std::io::stdio::Stdout&gt;   (1 samples, 0.21%)</title><rect x="1187.5" y="341" width="2.5" height="15.0" fill="rgb(249,205,49)" rx="2" ry="2" />
+<text  x="1190.54" y="351.5" ></text>
+</g>
+<g >
+<title>alloc::vec::spec_from_iter_nested::{impl#0   (12 samples, 2.51%)</title><rect x="1093.9" y="213" width="29.6" height="15.0" fill="rgb(248,201,48)" rx="2" ry="2" />
+<text  x="1096.92" y="223.5" >al..</text>
+</g>
+<g >
+<title>std::io::stdio::{impl#13   (1 samples, 0.21%)</title><rect x="1187.5" y="309" width="2.5" height="15.0" fill="rgb(214,44,10)" rx="2" ry="2" />
+<text  x="1190.54" y="319.5" ></text>
+</g>
+<g >
+<title>core::ops::function::impls::{impl#3   (1 samples, 0.21%)</title><rect x="1103.8" y="101" width="2.4" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1106.78" y="111.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::filter_map::{impl#2   (64 samples, 13.36%)</title><rect x="473.1" y="181" width="157.7" height="15.0" fill="rgb(248,200,48)" rx="2" ry="2" />
+<text  x="476.13" y="191.5" >core::iter::adapters..</text>
+</g>
+<g >
+<title>std::io::Write::write_fmt::{impl#0   (1 samples, 0.21%)</title><rect x="1187.5" y="261" width="2.5" height="15.0" fill="rgb(245,184,44)" rx="2" ry="2" />
+<text  x="1190.54" y="271.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::allocate_in&lt;(isize, isize), alloc::alloc::Global&gt;   (1 samples, 0.21%)</title><rect x="1123.5" y="149" width="2.4" height="15.0" fill="rgb(222,79,19)" rx="2" ry="2" />
+<text  x="1126.49" y="159.5" ></text>
+</g>
+<g >
+<title>alloc::vec::{impl#19   (1 samples, 0.21%)</title><rect x="1125.9" y="85" width="2.5" height="15.0" fill="rgb(209,21,5)" rx="2" ry="2" />
+<text  x="1128.95" y="95.5" ></text>
+</g>
+<g >
+<title>std::f64::{impl#0   (8 samples, 1.67%)</title><rect x="611.1" y="85" width="19.7" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="614.09" y="95.5" ></text>
+</g>
+<g >
+<title>core::slice::{impl#0   (9 samples, 1.88%)</title><rect x="1158.0" y="277" width="22.1" height="15.0" fill="rgb(210,26,6)" rx="2" ry="2" />
+<text  x="1160.97" y="287.5" >c..</text>
+</g>
+<g >
+<title>alloc::vec::{impl#14   (19 samples, 3.97%)</title><rect x="630.8" y="229" width="46.8" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="633.79" y="239.5" >allo..</text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;&gt;   (6 samples, 1.25%)</title><rect x="1143.2" y="213" width="14.8" height="15.0" fill="rgb(220,70,16)" rx="2" ry="2" />
+<text  x="1146.19" y="223.5" ></text>
+</g>
+<g >
+<title>core::ptr::read&lt;(isize, isize)&gt;   (4 samples, 0.84%)</title><rect x="1133.3" y="197" width="9.9" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="1136.34" y="207.5" ></text>
+</g>
+<g >
+<title>attempt10::is_close_int   (1 samples, 0.21%)</title><rect x="1180.1" y="117" width="2.5" height="15.0" fill="rgb(233,129,30)" rx="2" ry="2" />
+<text  x="1183.15" y="127.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#14   (6 samples, 1.25%)</title><rect x="1143.2" y="261" width="14.8" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="1146.19" y="271.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map&lt;core::ops::range::Range&lt;isize&gt;, (isize, isize), &amp;mut attempt10::get_inbetween_points::{closure_env#1   (1 samples, 0.21%)</title><rect x="1180.1" y="197" width="2.5" height="15.0" fill="rgb(233,128,30)" rx="2" ry="2" />
+<text  x="1183.15" y="207.5" ></text>
+</g>
+<g >
+<title>core::slice::iter::{impl#181   (99 samples, 20.67%)</title><rect x="798.3" y="229" width="243.9" height="15.0" fill="rgb(210,23,5)" rx="2" ry="2" />
+<text  x="801.31" y="239.5" >core::slice::iter::{impl#181  </text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (478 samples, 99.79%)</title><rect x="10.0" y="309" width="1177.5" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="13.00" y="319.5" >attempt10::choose_next_point  </text>
+</g>
+<g >
+<title>roundf64   (8 samples, 1.67%)</title><rect x="611.1" y="69" width="19.7" height="15.0" fill="rgb(240,163,39)" rx="2" ry="2" />
+<text  x="614.09" y="79.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::map::map_fold::{closure#0   (2 samples, 0.42%)</title><rect x="670.2" y="101" width="4.9" height="15.0" fill="rgb(223,83,20)" rx="2" ry="2" />
+<text  x="673.21" y="111.5" ></text>
+</g>
+<g >
+<title>core::ops::index_range::{impl#1   (9 samples, 1.88%)</title><rect x="685.0" y="245" width="22.2" height="15.0" fill="rgb(214,44,10)" rx="2" ry="2" />
+<text  x="687.99" y="255.5" >c..</text>
+</g>
+<g >
+<title>alloc::vec::{impl#14   (2 samples, 0.42%)</title><rect x="1123.5" y="245" width="4.9" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="1126.49" y="255.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::collect&lt;core::iter::adapters::map::Map&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#0   (19 samples, 3.97%)</title><rect x="630.8" y="245" width="46.8" height="15.0" fill="rgb(252,216,51)" rx="2" ry="2" />
+<text  x="633.79" y="255.5" >core..</text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::push&lt;(isize, isize), alloc::alloc::Global&gt;   (15 samples, 3.13%)</title><rect x="103.6" y="261" width="37.0" height="15.0" fill="rgb(208,15,3)" rx="2" ry="2" />
+<text  x="106.61" y="271.5" >all..</text>
+</g>
+<g >
+<title>core::iter::adapters::filter_map::{impl#2   (2 samples, 0.42%)</title><rect x="1101.3" y="165" width="4.9" height="15.0" fill="rgb(248,200,48)" rx="2" ry="2" />
+<text  x="1104.32" y="175.5" ></text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points::{closure#1   (6 samples, 1.25%)</title><rect x="458.4" y="69" width="14.7" height="15.0" fill="rgb(216,54,13)" rx="2" ry="2" />
+<text  x="461.35" y="79.5" ></text>
+</g>
+<g >
+<title>std::io::stdio::_print   (1 samples, 0.21%)</title><rect x="1187.5" y="357" width="2.5" height="15.0" fill="rgb(223,83,19)" rx="2" ry="2" />
+<text  x="1190.54" y="367.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (9 samples, 1.88%)</title><rect x="433.7" y="165" width="22.2" height="15.0" fill="rgb(252,219,52)" rx="2" ry="2" />
+<text  x="436.72" y="175.5" >a..</text>
+</g>
+<g >
+<title>all (479 samples, 100%)</title><rect x="10.0" y="389" width="1180.0" height="15.0" fill="rgb(213,39,9)" rx="2" ry="2" />
+<text  x="13.00" y="399.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map&lt;core::ops::range::Range&lt;isize&gt;, (isize, isize), &amp;mut attempt10::get_inbetween_points::{closure_env#1   (64 samples, 13.36%)</title><rect x="473.1" y="165" width="157.7" height="15.0" fill="rgb(233,128,30)" rx="2" ry="2" />
+<text  x="476.13" y="175.5" >core::iter::traits::..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::find_map::check::{closure#0   (6 samples, 1.25%)</title><rect x="458.4" y="101" width="14.7" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="461.35" y="111.5" ></text>
+</g>
+<g >
+<title>core::ptr::write&lt;(isize, isize)&gt;   (4 samples, 0.84%)</title><rect x="130.7" y="245" width="9.9" height="15.0" fill="rgb(229,110,26)" rx="2" ry="2" />
+<text  x="133.71" y="255.5" ></text>
+</g>
+<g >
+<title>core::ptr::mut_ptr::{impl#0   (2 samples, 0.42%)</title><rect x="125.8" y="245" width="4.9" height="15.0" fill="rgb(230,118,28)" rx="2" ry="2" />
+<text  x="128.78" y="255.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::try_fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::traits::iterator::Iterator::find_map::check::{closure_env#0   (6 samples, 1.25%)</title><rect x="458.4" y="117" width="14.7" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="461.35" y="127.5" ></text>
+</g>
+<g >
+<title>attempt10::choose_next_point   (408 samples, 85.18%)</title><rect x="37.1" y="277" width="1005.1" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="40.10" y="287.5" >attempt10::choose_next_point  </text>
+</g>
+<g >
+<title>core::ops::function::impls::{impl#3   (6 samples, 1.25%)</title><rect x="458.4" y="85" width="14.7" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="461.35" y="95.5" ></text>
+</g>
+<g >
+<title>alloc::raw_vec::RawVec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity_in&lt;(isize, isize), alloc::alloc::Global&gt;   (9 samples, 1.88%)</title><rect x="433.7" y="149" width="22.2" height="15.0" fill="rgb(232,125,30)" rx="2" ry="2" />
+<text  x="436.72" y="159.5" >a..</text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::fold&lt;core::ops::range::Range&lt;isize&gt;, (), core::iter::adapters::map::map_fold::{closure_env#0   (2 samples, 0.42%)</title><rect x="670.2" y="117" width="4.9" height="15.0" fill="rgb(213,41,9)" rx="2" ry="2" />
+<text  x="673.21" y="127.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::filter_map::{impl#2   (7 samples, 1.46%)</title><rect x="1106.2" y="197" width="17.3" height="15.0" fill="rgb(248,200,48)" rx="2" ry="2" />
+<text  x="1109.24" y="207.5" ></text>
+</g>
+<g >
+<title>alloc::vec::{impl#14   (83 samples, 17.33%)</title><rect x="426.3" y="229" width="204.5" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="429.33" y="239.5" >alloc::vec::{impl#14  </text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::for_each&lt;core::iter::adapters::map::Map&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#0   (2 samples, 0.42%)</title><rect x="670.2" y="149" width="4.9" height="15.0" fill="rgb(228,109,26)" rx="2" ry="2" />
+<text  x="673.21" y="159.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (6 samples, 1.25%)</title><rect x="1143.2" y="181" width="14.8" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1146.19" y="191.5" ></text>
+</g>
+<g >
+<title>free   (23 samples, 4.80%)</title><rect x="739.2" y="133" width="56.6" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="742.19" y="143.5" >free  </text>
+</g>
+<g >
+<title>std::io::stdio::{impl#1   (1 samples, 0.21%)</title><rect x="1187.5" y="181" width="2.5" height="15.0" fill="rgb(244,180,43)" rx="2" ry="2" />
+<text  x="1190.54" y="191.5" ></text>
+</g>
+<g >
+<title>attempt10::main   (479 samples, 100.00%)</title><rect x="10.0" y="373" width="1180.0" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="13.00" y="383.5" >attempt10::main  </text>
+</g>
+<g >
+<title>alloc::alloc::alloc   (2 samples, 0.42%)</title><rect x="1096.4" y="101" width="4.9" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="1099.39" y="111.5" ></text>
+</g>
+<g >
+<title>alloc::alloc::{impl#1   (1 samples, 0.21%)</title><rect x="1185.1" y="197" width="2.4" height="15.0" fill="rgb(253,223,53)" rx="2" ry="2" />
+<text  x="1188.07" y="207.5" ></text>
+</g>
+<g >
+<title>__rust_alloc   (3 samples, 0.63%)</title><rect x="433.7" y="69" width="7.4" height="15.0" fill="rgb(246,188,45)" rx="2" ry="2" />
+<text  x="436.72" y="79.5" ></text>
+</g>
+<g >
+<title>core::iter::range::{impl#5   (2 samples, 0.42%)</title><rect x="473.1" y="117" width="5.0" height="15.0" fill="rgb(232,124,29)" rx="2" ry="2" />
+<text  x="476.13" y="127.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::extend_desugared&lt;(isize, isize), alloc::alloc::Global, core::iter::adapters::filter_map::FilterMap&lt;core::ops::range::Range&lt;isize&gt;, attempt10::get_inbetween_points::{closure_env#1   (2 samples, 0.42%)</title><rect x="1101.3" y="181" width="4.9" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="1104.32" y="191.5" ></text>
+</g>
+<g >
+<title>core::iter::adapters::map::{impl#2   (2 samples, 0.42%)</title><rect x="670.2" y="133" width="4.9" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="673.21" y="143.5" ></text>
+</g>
+<g >
+<title>std::f64::{impl#0   (1 samples, 0.21%)</title><rect x="470.7" y="53" width="2.4" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="473.67" y="63.5" ></text>
+</g>
+<g >
+<title>std::io::stdio::{impl#12   (1 samples, 0.21%)</title><rect x="1187.5" y="325" width="2.5" height="15.0" fill="rgb(221,74,17)" rx="2" ry="2" />
+<text  x="1190.54" y="335.5" ></text>
+</g>
+<g >
+<title>alloc::vec::{impl#14   (1 samples, 0.21%)</title><rect x="1180.1" y="261" width="2.5" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="1183.15" y="271.5" ></text>
+</g>
+<g >
+<title>__rust_dealloc   (1 samples, 0.21%)</title><rect x="1185.1" y="165" width="2.4" height="15.0" fill="rgb(247,196,46)" rx="2" ry="2" />
+<text  x="1188.07" y="175.5" ></text>
+</g>
+<g >
+<title>alloc::vec::into_iter::{impl#14   (28 samples, 5.85%)</title><rect x="729.3" y="213" width="69.0" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="732.33" y="223.5" >alloc::..</text>
+</g>
+<g >
+<title>attempt10::get_inbetween_points::{closure#1   (1 samples, 0.21%)</title><rect x="1180.1" y="133" width="2.5" height="15.0" fill="rgb(216,54,13)" rx="2" ry="2" />
+<text  x="1183.15" y="143.5" ></text>
+</g>
+<g >
+<title>alloc::vec::Vec&lt;(isize, isize), alloc::alloc::Global&gt;::with_capacity&lt;(isize, isize)&gt;   (16 samples, 3.34%)</title><rect x="630.8" y="181" width="39.4" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="633.79" y="191.5" >all..</text>
+</g>
+<g >
+<title>alloc::vec::{impl#14   (12 samples, 2.51%)</title><rect x="1093.9" y="245" width="29.6" height="15.0" fill="rgb(241,169,40)" rx="2" ry="2" />
+<text  x="1096.92" y="255.5" >al..</text>
+</g>
+<g >
+<title>std::io::buffered::linewriter::{impl#2   (1 samples, 0.21%)</title><rect x="1187.5" y="229" width="2.5" height="15.0" fill="rgb(217,56,13)" rx="2" ry="2" />
+<text  x="1190.54" y="239.5" ></text>
+</g>
+<g >
+<title>std::alloc::__default_lib_allocator::__rdl_dealloc   (1 samples, 0.21%)</title><rect x="795.8" y="133" width="2.5" height="15.0" fill="rgb(228,109,26)" rx="2" ry="2" />
+<text  x="798.85" y="143.5" ></text>
+</g>
+<g >
+<title>core::iter::traits::iterator::Iterator::for_each::call::{closure#0   (2 samples, 0.42%)</title><rect x="670.2" y="85" width="4.9" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="673.21" y="95.5" ></text>
+</g>
+<g >
+<title>core::ptr::drop_in_place&lt;alloc::vec::into_iter::IntoIter&lt;(isize, isize), alloc::alloc::Global&gt;&gt;   (6 samples, 1.25%)</title><rect x="1143.2" y="277" width="14.8" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="1146.19" y="287.5" ></text>
+</g>
+</g>
+</svg>

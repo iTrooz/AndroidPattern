@@ -22,7 +22,8 @@ fn test_is_close_int() {
     assert!(!is_close_int(5.5));
 }
 
-fn to_number_0(p: &(isize, isize)) -> isize {
+#[inline(always)]
+fn to_number(p: &(isize, isize)) -> isize {
     6 - p.1 * 3 + p.0
 }
 
@@ -60,7 +61,7 @@ fn test_get_inbetween_points() {
     assert_eq!(get_inbetween_points(&(0, 0), &(2, 0)), vec![(1, 0)]);
 }
 
-fn choose_next_point(used_points: &mut HashSet<(isize, isize)>, last_point: (isize, isize)) -> isize {
+fn choose_next_point(used_points: &mut [u16], last_point: (isize, isize)) -> isize {
     let mut found_possibilities = 0;
 
     if used_points.len() >= MIN_LEN {
@@ -71,6 +72,7 @@ fn choose_next_point(used_points: &mut HashSet<(isize, isize)>, last_point: (isi
     }
 
     for p in ALL_POINTS {
+        pn = to_number(p);
         if !used_points.contains(&p) {
             let mut valid = true;
 
@@ -96,7 +98,7 @@ fn main() {
     let mut total = 0;
 
     for p in ALL_POINTS {
-        println!("Starting start point {:?} ({})", p, to_number_0(&p));
+        println!("Starting start point {:?} ({})", p, to_number(&p));
         let mut used_points = HashSet::with_capacity((SIZE*SIZE) as usize);
         used_points.insert(p);
         total += choose_next_point(&mut used_points, p);
