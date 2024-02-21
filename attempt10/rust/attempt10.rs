@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use mylib::make_all_points;
 
 const SIZE: isize = 4;
@@ -58,7 +60,7 @@ fn test_get_inbetween_points() {
     assert_eq!(get_inbetween_points(&(0, 0), &(2, 0)), vec![(1, 0)]);
 }
 
-fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, isize)) -> isize {
+fn choose_next_point(used_points: &mut HashSet<(isize, isize)>, last_point: (isize, isize)) -> isize {
     let mut found_possibilities = 0;
 
     if used_points.len() >= MIN_LEN {
@@ -80,9 +82,9 @@ fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, 
             }
 
             if valid {
-                used_points.push(p);
+                used_points.insert(p);
                 found_possibilities += choose_next_point(used_points, p);
-                used_points.pop();
+                used_points.remove(&p);
             }
         }
     }
@@ -95,7 +97,8 @@ fn main() {
 
     for p in ALL_POINTS {
         println!("Starting start point {:?} ({})", p, to_number_0(&p));
-        let mut used_points = vec![p];
+        let mut used_points = HashSet::with_capacity((SIZE*SIZE) as usize);
+        used_points.insert(p);
         total += choose_next_point(&mut used_points, p);
         println!("Finished start point {:?}", p);
     }
