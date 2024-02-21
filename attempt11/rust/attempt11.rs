@@ -55,10 +55,10 @@ fn get_inbetween_points(
     if xdiff == 0 {
         let y_range = (p1.1.min(p2.1) + 1)..p1.1.max(p2.1);
         let p1x = p1.0;
-        let a = y_range.filter_map(move |y| Some((p1x, y)));
+        let fun = y_range.filter_map(move |y| Some((p1x, y)));
 
         it = EitherIterator {
-            either: Either::Left(a),
+            either: Either::Left(fun),
         }
     } else {
         let slope = (p2.1 - p1.1) as f64 / xdiff as f64;
@@ -67,7 +67,7 @@ fn get_inbetween_points(
 
         let x_range = (p1.0.min(p2.0) + 1)..p1.0.max(p2.0);
 
-        let a = x_range.filter_map(move |x| {
+        let fun = x_range.filter_map(move |x| {
             let y = slope * x as f64 + init;
             if is_close_int(y) {
                 Some((x, y.round() as isize))
@@ -77,7 +77,7 @@ fn get_inbetween_points(
         });
 
         it = EitherIterator {
-            either: Either::Right(a),
+            either: Either::Right(fun),
         }
     }
     it
