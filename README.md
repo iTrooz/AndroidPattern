@@ -146,3 +146,11 @@ C++: 0.69s
 ![](attempt9/cpp/attempt9.svg)
 
 ## Note: at this point I made a x570 speed improvement (Going from 4m39 (399s) in attempt 1 to 0.7s in attempt 9 for size 4 and max size 7)
+
+From now on, I (think I ?) will only update the Rust script, to be able to iterate quicker
+
+## Attempt 10: run Rust `choose_next_point()` at compile-time
+I couldn't make a cleaner solution, see https://discord.com/channels/172018499005317120/364870796830703627/1209812638582968350
+
+Time went to 0.50s
+![](attempt10/rust/attempt10.svg)
