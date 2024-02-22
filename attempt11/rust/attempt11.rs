@@ -21,45 +21,19 @@ fn test_is_close_int() {
     assert!(!is_close_int(5.5));
 }
 
-struct EitherIterator<A, B, C>
-where
-    A: Iterator<Item = C>,
-    B: Iterator<Item = C>,
-{
-    either: itertools::Either<A, B>,
-}
-
-impl<A, B, C> Iterator for EitherIterator<A, B, C>
-where
-    A: Iterator<Item = C>,
-    B: Iterator<Item = C>,
-{
-    type Item = C;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.either {
-            Either::Left(ref mut left) => left.next(),
-            Either::Right(ref mut right) => right.next(),
-        }
-    }
-}
-
 fn get_inbetween_points(
     p1: &(isize, isize),
     p2: &(isize, isize),
 ) -> impl Iterator<Item = (isize, isize)> {
     let xdiff = p2.0 - p1.0;
 
-    let it: EitherIterator<_, _, (isize, isize)>;
+    let mut either: Either<_, _>;
 
     if xdiff == 0 {
         let y_range = (p1.1.min(p2.1) + 1)..p1.1.max(p2.1);
         let p1x = p1.0;
         let fun = y_range.filter_map(move |y| Some((p1x, y)));
-
-        it = EitherIterator {
-            either: Either::Left(fun),
-        }
+        either = Either::Left(fun);
     } else {
         let slope = (p2.1 - p1.1) as f64 / xdiff as f64;
 
@@ -75,21 +49,37 @@ fn get_inbetween_points(
                 None
             }
         });
-
-        it = EitherIterator {
-            either: Either::Right(fun),
-        }
+        either = Either::Right(fun);
     }
-    it
+
+    std::iter::from_fn(move || match &mut either {
+        Either::Left(ref mut left) => left.next(),
+        Either::Right(ref mut right) => right.next(),
+    })
 }
 
 #[test]
 fn test_get_inbetween_points() {
-    assert_eq!(get_inbetween_points(&(0, 0), &(3, 3)).collect::<Vec<_>>(), vec![(1, 1), (2, 2)]);
-    assert_eq!(get_inbetween_points(&(3, 3), &(0, 0)).collect::<Vec<_>>(), vec![(1, 1), (2, 2)]);
-    assert_eq!(get_inbetween_points(&(1, 1), &(3, 5)).collect::<Vec<_>>(), vec![(2, 3)]);
-    assert_eq!(get_inbetween_points(&(0, 0), &(0, 2)).collect::<Vec<_>>(), vec![(0, 1)]);
-    assert_eq!(get_inbetween_points(&(0, 0), &(2, 0)).collect::<Vec<_>>(), vec![(1, 0)]);
+    assert_eq!(
+        get_inbetween_points(&(0, 0), &(3, 3)).collect::<Vec<_>>(),
+        vec![(1, 1), (2, 2)]
+    );
+    assert_eq!(
+        get_inbetween_points(&(3, 3), &(0, 0)).collect::<Vec<_>>(),
+        vec![(1, 1), (2, 2)]
+    );
+    assert_eq!(
+        get_inbetween_points(&(1, 1), &(3, 5)).collect::<Vec<_>>(),
+        vec![(2, 3)]
+    );
+    assert_eq!(
+        get_inbetween_points(&(0, 0), &(0, 2)).collect::<Vec<_>>(),
+        vec![(0, 1)]
+    );
+    assert_eq!(
+        get_inbetween_points(&(0, 0), &(2, 0)).collect::<Vec<_>>(),
+        vec![(1, 0)]
+    );
 }
 
 fn choose_next_point(used_points: &mut Vec<(isize, isize)>, last_point: (isize, isize)) -> isize {
