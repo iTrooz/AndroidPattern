@@ -157,5 +157,7 @@ Time went to 0.48s
 
 ## Attempt 11: Remove allocations of `get_inbetween_points()`
 
+With thee suggestion of `_haddock_` on discord, I made `get_inbetween_points()` act as a generator lazily outputting values rather than allocating a Vec<>
+
 Time went to 0.432s
 ![](attempt11/rust/attempt11.svg)
