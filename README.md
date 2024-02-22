@@ -154,3 +154,8 @@ I couldn't make a cleaner solution, see https://discord.com/channels/17201849900
 
 Time went to 0.48s
 ![](attempt10/rust/attempt10.svg)
+
+## Attempt 11: Remove allocations of `get_inbetween_points()`
+
+Time went to 0.432s
+![](attempt11/rust/attempt11.svg)
