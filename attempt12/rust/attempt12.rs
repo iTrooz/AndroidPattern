@@ -56,15 +56,15 @@ fn get_inbetween_points(c: &mut Context, p1: &(isize, isize), p2: &(isize, isize
     data
 }
 
-// #[test]
-// fn test_get_inbetween_points() {
-//     let c = &mut init_context();
-//     assert_eq!(get_inbetween_points(c, &(0, 0), &(3, 3)), vec![(1, 1), (2, 2)]);
-//     assert_eq!(get_inbetween_points(c, &(3, 3), &(0, 0)), vec![(1, 1), (2, 2)]);
-//     assert_eq!(get_inbetween_points(c, &(1, 1), &(3, 5)), vec![(2, 3)]);
-//     assert_eq!(get_inbetween_points(c, &(0, 0), &(0, 2)), vec![(0, 1)]);
-//     assert_eq!(get_inbetween_points(c, &(0, 0), &(2, 0)), vec![(1, 0)]);
-// }
+#[test]
+fn test_get_inbetween_points() {
+    let c = &mut init_context();
+    assert_eq!(get_inbetween_points(c, &(0, 0), &(3, 3)), vec![(1, 1), (2, 2)]);
+    assert_eq!(get_inbetween_points(c, &(3, 3), &(0, 0)), vec![(1, 1), (2, 2)]);
+    assert_eq!(get_inbetween_points(c, &(1, 1), &(3, 5)), vec![(2, 3)]);
+    assert_eq!(get_inbetween_points(c, &(0, 0), &(0, 2)), vec![(0, 1)]);
+    assert_eq!(get_inbetween_points(c, &(0, 0), &(2, 0)), vec![(1, 0)]);
+}
 
 fn choose_next_point(
     c: &mut Context,
