@@ -164,6 +164,9 @@ Time went to 0.432s
 
 At this point, speeds were starting to be too small to work with, so I increased `MAX_LEN` to 8, giving me a speed of 3.313s
 
+New flamegraph with `MAX_LEN` set to 8:
+![](attempt11/rust/attempt11b.svg)
+
 ## Attempt 12: Add cache to `get_inbetween_points()`
 
 Another suggestion of `_haddock_` was to add cache to `get_inbetween_points()`, to avoid repeated calls for the same input points.
