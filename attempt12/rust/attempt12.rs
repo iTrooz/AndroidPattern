@@ -24,10 +24,10 @@ fn test_is_close_int() {
     assert!(!is_close_int(5.5));
 }
 
-fn get_inbetween_points(c: &mut Context, p1: &(isize, isize), p2: &(isize, isize)) -> impl Iterator<Item = (isize, isize)> {
+fn get_inbetween_points(c: &mut Context, p1: &(isize, isize), p2: &(isize, isize)) -> Vec<(isize, isize)> {
     let id = to_number(p1) * SIZE*SIZE + to_number(p2);
     if let Some(ref data) = c.inbetween_points_cache[id as usize] {
-        return data.clone().into_iter()
+        return data.clone();
     }
 
     let xdiff = p2.0 - p1.0;
@@ -53,7 +53,7 @@ fn get_inbetween_points(c: &mut Context, p1: &(isize, isize), p2: &(isize, isize
             .collect()
     };
     c.inbetween_points_cache[id as usize] = Some(data.clone());
-    data.into_iter()
+    data
 }
 
 // #[test]
