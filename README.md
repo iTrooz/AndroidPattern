@@ -161,3 +161,5 @@ With thee suggestion of `_haddock_` on discord, I made `get_inbetween_points()` 
 
 Time went to 0.432s
 ![](attempt11/rust/attempt11.svg)
+
+At this point, speeds were starting to be too small to work with, so I increased `MAX_LEN` to 8, giving me a speed of 3.344s

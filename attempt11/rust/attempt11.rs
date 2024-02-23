@@ -3,7 +3,7 @@ use mylib::make_all_points;
 
 const SIZE: isize = 4;
 const MIN_LEN: usize = 4;
-const MAX_LEN: usize = 7;
+const MAX_LEN: usize = 8;
 make_all_points!(4); // create ALL_POINTS const. Pass SIZE as argument
 
 fn is_close_int(n: f64) -> bool {
