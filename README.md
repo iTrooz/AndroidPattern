@@ -172,7 +172,9 @@ New flamegraph with `MAX_LEN` set to 8:
 Another suggestion of `_haddock_` was to add cache to `get_inbetween_points()`, to avoid repeated calls for the same input points.
 
 I implemented this while trying to keep the modifications of attempt 11 (visit earlier commits to see it, see next line for explanation). Speed didn't really change: it went to 3.314s
+![](attempt12/rust/attempt12_iter.svg)
 
 I wasn't really convinced with the Iterator approach with the cache, so I tried replacing them with vectors (this is the version currently shown in the code. Visit earlier commits for the iterator approach). Time once again didn't change (3.290s)
+![](attempt12/rust/attempt12_vec.svg)
 
 Next attempts will use attempt 11 as a base
