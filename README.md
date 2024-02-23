@@ -177,4 +177,5 @@ I implemented this while trying to keep the modifications of attempt 11 (visit e
 I wasn't really convinced with the Iterator approach with the cache, so I tried replacing them with vectors (this is the version currently shown in the code. Visit earlier commits for the iterator approach). Time once again didn't change (3.290s)
 ![](attempt12/rust/attempt12_vec.svg)
 
-Next attempts will use attempt 11 as a base
+Looking at the above flamegraphs (yes, I didn't look at them until right now), I noticed that I reintroduced a heap allocation, and that it was visibly slowing things down. Removing the new .clone() calls by making the function return a vector reference improved the speed: 2.456s
+![](attempt12/rust/attempt12_vec_ref.svg)

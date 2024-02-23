@@ -24,10 +24,10 @@ fn test_is_close_int() {
     assert!(!is_close_int(5.5));
 }
 
-fn get_inbetween_points(c: &mut Context, p1: &(isize, isize), p2: &(isize, isize)) -> Vec<(isize, isize)> {
+fn get_inbetween_points<'a>(c: &'a mut Context, p1: &(isize, isize), p2: &(isize, isize)) -> &'a Vec<(isize, isize)> {
     let id = to_number(p1) * SIZE*SIZE + to_number(p2);
     if let Some(ref data) = c.inbetween_points_cache[id as usize] {
-        return data.clone();
+        return data;
     }
 
     let xdiff = p2.0 - p1.0;
@@ -52,18 +52,18 @@ fn get_inbetween_points(c: &mut Context, p1: &(isize, isize), p2: &(isize, isize
             })
             .collect()
     };
-    c.inbetween_points_cache[id as usize] = Some(data.clone());
-    data
+    c.inbetween_points_cache[id as usize] = Some(data);
+    c.inbetween_points_cache[id as usize].as_ref().unwrap()
 }
 
 #[test]
 fn test_get_inbetween_points() {
     let c = &mut init_context();
-    assert_eq!(get_inbetween_points(c, &(0, 0), &(3, 3)), vec![(1, 1), (2, 2)]);
-    assert_eq!(get_inbetween_points(c, &(3, 3), &(0, 0)), vec![(1, 1), (2, 2)]);
-    assert_eq!(get_inbetween_points(c, &(1, 1), &(3, 5)), vec![(2, 3)]);
-    assert_eq!(get_inbetween_points(c, &(0, 0), &(0, 2)), vec![(0, 1)]);
-    assert_eq!(get_inbetween_points(c, &(0, 0), &(2, 0)), vec![(1, 0)]);
+    assert_eq!(get_inbetween_points(c, &(0, 0), &(3, 3)), &vec![(1, 1), (2, 2)]);
+    assert_eq!(get_inbetween_points(c, &(3, 3), &(0, 0)), &vec![(1, 1), (2, 2)]);
+    assert_eq!(get_inbetween_points(c, &(1, 1), &(3, 5)), &vec![(2, 3)]);
+    assert_eq!(get_inbetween_points(c, &(0, 0), &(0, 2)), &vec![(0, 1)]);
+    assert_eq!(get_inbetween_points(c, &(0, 0), &(2, 0)), &vec![(1, 0)]);
 }
 
 fn choose_next_point(
