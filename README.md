@@ -162,14 +162,14 @@ With thee suggestion of `_haddock_` on discord, I made `get_inbetween_points()` 
 Time went to 0.432s
 ![](attempt11/rust/attempt11.svg)
 
-At this point, speeds were starting to be too small to work with, so I increased `MAX_LEN` to 8, giving me a speed of 3.344s
+At this point, speeds were starting to be too small to work with, so I increased `MAX_LEN` to 8, giving me a speed of 3.313s
 
 ## Attempt 12: Add cache to `get_inbetween_points()`
 
 Another suggestion of `_haddock_` was to add cache to `get_inbetween_points()`, to avoid repeated calls for the same input points.
 
-I implemented this while trying to keep the modifications of attempt 11 (visit earlier commits to see it, see next line for explanation). Speed didn't really change: it went to 3.310s
+I implemented this while trying to keep the modifications of attempt 11 (visit earlier commits to see it, see next line for explanation). Speed didn't really change: it went to 3.314s
 
-I wasn't really convinced with the Iterator approach with the cache, so I tried replacing them with vectors (this is the version currently shown in the code. Visit earlier commits for the iterator approach). Time once again didn't change (3.279s)
+I wasn't really convinced with the Iterator approach with the cache, so I tried replacing them with vectors (this is the version currently shown in the code. Visit earlier commits for the iterator approach). Time once again didn't change (3.290s)
 
 Next attempts will use attempt 11 as a base
