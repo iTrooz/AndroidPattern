@@ -1,0 +1,21 @@
+[package]
+name = "attempt12"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+itertools = "0.12.1"
+
+[[bin]]
+name = "attempt12"
+path = "attempt12.rs"
+
+[lib]
+name = "mylib"
+path = "mylib.rs"
+proc-macro = true
+
+[profile.release]
+debug = true
